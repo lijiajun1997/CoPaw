@@ -31,7 +31,7 @@ class RestartInProgressError(Exception):
 
 DAEMON_PREFIX = "/daemon"
 DAEMON_SUBCOMMANDS = frozenset(
-    {"status", "restart", "reload-config", "version", "logs", "approve"},
+    {"status", "restart", "reload-config", "version", "logs", "approve", "stop"},
 )
 # Short names: /restart -> /daemon restart, etc.
 DAEMON_SHORT_ALIASES = {
@@ -42,6 +42,7 @@ DAEMON_SHORT_ALIASES = {
     "version": "version",
     "logs": "logs",
     "approve": "approve",
+    "stop": "stop",
 }
 
 
@@ -219,6 +220,67 @@ async def run_daemon_approve(
         return f"**Approve failed**\n\n- {exc}"
 
 
+async def run_daemon_stop(
+    session_id: str = "",
+) -> str:
+    """Stop the currently running task for a session.
+
+    Called when the user sends ``/stop`` or ``/daemon stop`` in the chat.
+
+    Args:
+        session_id: The session ID to stop the task for
+
+    Returns:
+        Status message indicating success or failure
+    """
+    if not session_id:
+        return (
+            "**No Session ID**\n\n"
+            "- Cannot stop task: no session ID provided\n"
+            "- This command should be used in an active conversation"
+        )
+
+    from ..session_task_registry import (
+        cancel_session_task,
+        is_session_running,
+        get_running_sessions,
+    )
+
+    # If no specific session_id, try to find running sessions
+    if session_id == "__all__":
+        running = get_running_sessions()
+        if not running:
+            return "**No Running Tasks**\n\n- No tasks are currently running"
+        stopped = []
+        for sid in running:
+            if cancel_session_task(sid):
+                stopped.append(sid)
+        return (
+            f"**Stopped {len(stopped)} Task(s)**\n\n"
+            f"- Stopped sessions: {', '.join(stopped[:5])}"
+            f"{'...' if len(stopped) > 5 else ''}"
+        )
+
+    if is_session_running(session_id):
+        if cancel_session_task(session_id):
+            return (
+                f"**Task Stopped** ⏹️\n\n"
+                f"- Session: `{session_id[:16]}…`\n"
+                f"- The current task has been cancelled"
+            )
+        return (
+            f"**Failed to Stop Task**\n\n"
+            f"- Session: `{session_id[:16]}…`\n"
+            f"- The task could not be cancelled"
+        )
+
+    return (
+        f"**No Running Task**\n\n"
+        f"- Session: `{session_id[:16]}…`\n"
+        f"- There is no task currently running for this session"
+    )
+
+
 def parse_daemon_query(query: str) -> Optional[tuple[str, list[str]]]:
     """Parse /daemon <sub> or /<short>. Return (subcommand, args) or None."""
     if not query or not isinstance(query, str):
@@ -289,6 +351,12 @@ class DaemonCommandHandlerMixin:
         elif sub == "approve":
             session_id = getattr(context, "session_id", "") or ""
             text = await run_daemon_approve(context, session_id=session_id)
+        elif sub == "stop":
+            session_id = getattr(context, "session_id", "") or ""
+            # Check if args contain a specific session_id to stop
+            if args and args[0] and not args[0].isdigit():
+                session_id = args[0]
+            text = await run_daemon_stop(session_id=session_id)
         else:
             text = "Unknown daemon subcommand."
         logger.info("handle_daemon_command %s completed", query)

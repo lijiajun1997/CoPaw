@@ -54,6 +54,8 @@ class AgentRunner(Runner):
         self._chat_manager = None  # Store chat_manager reference
         self._mcp_manager = None  # MCP client manager for hot-reload
         self.memory_manager: MemoryManager | None = None
+        # Session task tracking for /stop command
+        self._session_tasks: dict[str, asyncio.Task] = {}
 
     def set_chat_manager(self, chat_manager):
         """Set chat manager for auto-registration.
@@ -70,6 +72,46 @@ class AgentRunner(Runner):
             mcp_manager: MCPClientManager instance
         """
         self._mcp_manager = mcp_manager
+
+    def cancel_session_task(self, session_id: str) -> bool:
+        """Cancel a running session task.
+
+        Args:
+            session_id: Session ID to cancel
+
+        Returns:
+            True if a task was cancelled, False otherwise
+        """
+        task = self._session_tasks.get(session_id)
+        if task is not None and not task.done():
+            logger.info("Cancelling session task: %s", session_id)
+            task.cancel()
+            return True
+        return False
+
+    def is_session_running(self, session_id: str) -> bool:
+        """Check if a session has a running task.
+
+        Args:
+            session_id: Session ID to check
+
+        Returns:
+            True if the session has an active task
+        """
+        task = self._session_tasks.get(session_id)
+        return task is not None and not task.done()
+
+    def get_running_sessions(self) -> list[str]:
+        """Get list of session IDs with running tasks.
+
+        Returns:
+            List of session IDs with active tasks
+        """
+        return [
+            sid
+            for sid, task in self._session_tasks.items()
+            if not task.done()
+        ]
 
     _APPROVAL_TIMEOUT_SECONDS = TOOL_GUARD_APPROVAL_TIMEOUT_SECONDS
 

@@ -35,6 +35,10 @@ from agentscope_runtime.engine.schemas.agent_schemas import (
 from .renderer import MessageRenderer, RenderStyle
 from .schema import ChannelType
 from ...config.utils import load_config
+from ..session_task_registry import (
+    register_session_task,
+    unregister_session_task,
+)
 
 # Optional callback to enqueue payload (set by manager)
 EnqueueCallback = Optional[Callable[[Any], None]]
@@ -548,6 +552,13 @@ class BaseChannel(ABC):
         Run _process and send events. Override to use channel-specific
         loop (e.g. DingTalk _process_one_request with webhook sends).
         """
+        session_id = getattr(request, "session_id", "") or ""
+        current_task = asyncio.current_task()
+
+        # Register this task for /stop command support
+        if session_id and current_task is not None:
+            register_session_task(session_id, current_task)
+
         last_response = None
         try:
             async for event in self._process(request):
@@ -573,6 +584,14 @@ class BaseChannel(ABC):
             if self._on_reply_sent:
                 args = self.get_on_reply_sent_args(request, to_handle)
                 self._on_reply_sent(self.channel, *args)
+        except asyncio.CancelledError:
+            logger.info("Session task cancelled: %s", session_id)
+            await self._on_consume_error(
+                request,
+                to_handle,
+                "⚠️ Task has been stopped by user.\n任务已被用户停止。",
+            )
+            raise
         except Exception:
             logger.exception("channel consume_one failed")
             await self._on_consume_error(
@@ -580,6 +599,10 @@ class BaseChannel(ABC):
                 to_handle,
                 "An error occurred while processing your request.",
             )
+        finally:
+            # Unregister task when done
+            if session_id:
+                unregister_session_task(session_id)
 
     def _get_response_error_message(self, last_response: Any) -> Optional[str]:
         """
