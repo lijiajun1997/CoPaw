@@ -4,6 +4,7 @@
 This module provides the main CoPawAgent class built on ReActAgent,
 with integrated tools, skills, and memory management.
 """
+
 import asyncio
 import logging
 import os
@@ -35,6 +36,8 @@ from .tools import (
     execute_shell_command,
     get_current_time,
     get_token_usage,
+    glob_search,
+    grep_search,
     read_file,
     send_file_to_user,
     set_user_timezone,
@@ -168,7 +171,6 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
             memory=self.memory,
             memory_manager=self.memory_manager,
             enable_memory_manager=self._enable_memory_manager,
-            agent_config=agent_config,
         )
 
         # Register hooks
@@ -213,6 +215,8 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
             "read_file": read_file,
             "write_file": write_file,
             "edit_file": edit_file,
+            "grep_search": grep_search,
+            "glob_search": glob_search,
             "browser_use": browser_use,
             "desktop_screenshot": desktop_screenshot,
             "view_image": view_image,
@@ -341,7 +345,6 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
         if self._enable_memory_manager and self.memory_manager is not None:
             memory_compact_hook = MemoryCompactionHook(
                 memory_manager=self.memory_manager,
-                agent_config=self._agent_config,
             )
             self.register_instance_hook(
                 hook_type="pre_reasoning",
@@ -531,16 +534,162 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
                 setattr(rebuilt_client, "_copaw_rebuild_info", rebuild_info)
                 return rebuilt_client
 
+            raw_headers = rebuild_info.get("headers") or {}
+            headers = (
+                {k: os.path.expandvars(v) for k, v in raw_headers.items()}
+                if raw_headers
+                else None
+            )
             rebuilt_client = HttpStatefulClient(
                 name=name,
                 transport=transport,
                 url=rebuild_info.get("url"),
-                headers=rebuild_info.get("headers"),
+                headers=headers,
             )
             setattr(rebuilt_client, "_copaw_rebuild_info", rebuild_info)
             return rebuilt_client
         except Exception:  # pylint: disable=broad-except
             return None
+
+    # ------------------------------------------------------------------
+    # Media-block fallback: strip unsupported media blocks (image, audio,
+    # video) from memory and retry when the model rejects them.
+    # ------------------------------------------------------------------
+
+    _MEDIA_BLOCK_TYPES = {"image", "audio", "video"}
+
+    async def _reasoning(
+        self,
+        tool_choice: Literal["auto", "none", "required"] | None = None,
+    ) -> Msg:
+        """Override reasoning with media-block fallback.
+
+        If the model call fails with a bad-request error and memory
+        contains media blocks (image/audio/video), strip them all and
+        retry once.  Calls ``super()._reasoning`` to keep the
+        ToolGuardMixin interception active.
+        """
+        try:
+            return await super()._reasoning(tool_choice=tool_choice)
+        except Exception as e:
+            if not self._is_bad_request_or_media_error(e):
+                raise
+
+            n_stripped = self._strip_media_blocks_from_memory()
+            if n_stripped == 0:
+                raise
+
+            logger.warning(
+                "_reasoning failed (%s). "
+                "Stripped %d media block(s) from memory, retrying.",
+                e,
+                n_stripped,
+            )
+            return await super()._reasoning(tool_choice=tool_choice)
+
+    async def _summarizing(self) -> Msg:
+        """Override summarizing with the same media-block fallback."""
+        try:
+            return await super()._summarizing()
+        except Exception as e:
+            if not self._is_bad_request_or_media_error(e):
+                raise
+
+            n_stripped = self._strip_media_blocks_from_memory()
+            if n_stripped == 0:
+                raise
+
+            logger.warning(
+                "_summarizing failed (%s). "
+                "Stripped %d media block(s) from memory, retrying.",
+                e,
+                n_stripped,
+            )
+            return await super()._summarizing()
+
+    @staticmethod
+    def _is_bad_request_or_media_error(exc: Exception) -> bool:
+        """Return True for 400-class or media-related model errors.
+
+        Targets bad-request (400) errors because unsupported media
+        content typically causes request validation failures.  Keyword
+        matching provides an extra safety net for providers that use
+        non-standard status codes.
+        """
+        status = getattr(exc, "status_code", None)
+        if status == 400:
+            return True
+
+        error_str = str(exc).lower()
+        keywords = [
+            "image",
+            "audio",
+            "video",
+            "vision",
+            "multimodal",
+            "image_url",
+        ]
+        return any(kw in error_str for kw in keywords)
+
+    _MEDIA_PLACEHOLDER = (
+        "[Media content removed - model does not support this media type]"
+    )
+
+    def _strip_media_blocks_from_memory(self) -> int:
+        """Remove media blocks (image/audio/video) from all messages.
+
+        Also strips media blocks nested inside ToolResultBlock outputs.
+        Inserts placeholder text when stripping leaves content empty to
+        avoid malformed API requests.
+
+        Returns:
+            Total number of media blocks removed.
+        """
+        media_types = self._MEDIA_BLOCK_TYPES
+        total_stripped = 0
+
+        for msg, _marks in self.memory.content:
+            if not isinstance(msg.content, list):
+                continue
+
+            new_content = []
+            for block in msg.content:
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") in media_types
+                ):
+                    total_stripped += 1
+                    continue
+
+                if (
+                    isinstance(block, dict)
+                    and block.get("type") == "tool_result"
+                    and isinstance(block.get("output"), list)
+                ):
+                    original_len = len(block["output"])
+                    block["output"] = [
+                        item
+                        for item in block["output"]
+                        if not (
+                            isinstance(item, dict)
+                            and item.get("type") in media_types
+                        )
+                    ]
+                    stripped_count = original_len - len(block["output"])
+                    total_stripped += stripped_count
+                    if stripped_count > 0 and not block["output"]:
+                        block["output"] = self._MEDIA_PLACEHOLDER
+
+                new_content.append(block)
+
+            if not new_content and total_stripped > 0:
+                new_content.append(
+                    {"type": "text", "text": self._MEDIA_PLACEHOLDER},
+                )
+
+            msg.content = new_content
+
+        return total_stripped
 
     async def reply(
         self,

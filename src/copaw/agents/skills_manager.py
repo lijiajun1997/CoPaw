@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 """Skills management: sync skills from code to working_dir."""
 
+import io
 import logging
+import re
 import shutil
+import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any
 from pydantic import BaseModel
@@ -237,27 +241,8 @@ def sync_skills_to_working_dir(
             synced_count += 1
             continue
 
-        customized_dir = customized_skills / skill_name
-
-        # Builtin version upgrade (only when no customized override)
-        builtin_dir = builtin_skills / skill_name
-        if builtin_dir.exists() and not customized_dir.exists():
-            builtin_ver = _get_builtin_skill_version(builtin_dir)
-            if builtin_ver is not None:
-                active_ver = _get_builtin_skill_version(target_dir)
-                if active_ver is None or builtin_ver > active_ver:
-                    _replace_skill_dir(builtin_dir, target_dir)
-                    logger.debug(
-                        "Builtin skill '%s' updated in "
-                        "active_skills (v%s -> v%s).",
-                        skill_name,
-                        active_ver,
-                        builtin_ver,
-                    )
-                    synced_count += 1
-                    continue
-
         # Customized override: propagate customized → active
+        customized_dir = customized_skills / skill_name
         if customized_dir.exists() and _skill_md_differs(
             customized_dir,
             target_dir,
@@ -309,13 +294,30 @@ def sync_skills_from_active_to_customized(
         if skill_names is not None and skill_name not in skill_names:
             continue
 
-        # Skip builtin skills (dual check: version field + name match)
-        active_ver = _get_builtin_skill_version(skill_dir)
-        if active_ver is not None and skill_name in builtin_skills_dict:
-            skipped_count += 1
+        # Builtin skill: check version upgrade, skip back-sync
+        if skill_name in builtin_skills_dict:
+            builtin_dir = builtin_skills_dict[skill_name]
+            active_ver = _get_builtin_skill_version(skill_dir)
+            builtin_ver = _get_builtin_skill_version(builtin_dir)
+            if (
+                active_ver is not None
+                and builtin_ver is not None
+                and builtin_ver > active_ver
+            ):
+                _replace_skill_dir(builtin_dir, skill_dir)
+                logger.debug(
+                    "Builtin skill '%s' updated in "
+                    "active_skills (v%s -> v%s).",
+                    skill_name,
+                    active_ver,
+                    builtin_ver,
+                )
+                synced_count += 1
+            else:
+                skipped_count += 1
             continue
 
-        # Only back-sync when customized doesn't already exist
+        # Non-builtin: back-sync to customized (first-time only)
         target_dir = customized_skills / skill_name
         if target_dir.exists():
             skipped_count += 1
@@ -516,6 +518,112 @@ def _create_files_from_tree(
             )
 
 
+_MAX_ZIP_BYTES = 200 * 1024 * 1024  # 200 MB uncompressed guard
+
+
+def _is_hidden(name: str) -> bool:
+    """Return True for __MACOSX dirs and dotfiles/dotdirs."""
+    return name.startswith("__MACOSX") or name.startswith(".")
+
+
+def _extract_and_validate_zip(data: bytes, tmp_dir: Path) -> None:
+    """Extract zip to *tmp_dir* after security validation."""
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        total = sum(i.file_size for i in zf.infolist())
+        if total > _MAX_ZIP_BYTES:
+            mb = _MAX_ZIP_BYTES // 1024 // 1024
+            raise ValueError(
+                f"Uncompressed size exceeds {mb}MB limit",
+            )
+        root_path = tmp_dir.resolve()
+        for info in zf.infolist():
+            target = (tmp_dir / info.filename).resolve()
+            if not target.is_relative_to(root_path):
+                raise ValueError(
+                    f"Unsafe path: {info.filename}",
+                )
+            if info.external_attr >> 16 & 0o120000 == 0o120000:
+                raise ValueError(
+                    f"Symlink not allowed: {info.filename}",
+                )
+        zf.extractall(tmp_dir)
+
+
+def _resolve_skill_name(skill_dir: Path) -> str:
+    """Read name from SKILL.md frontmatter, fallback to dir name."""
+    try:
+        name = frontmatter.loads(
+            (skill_dir / "SKILL.md").read_text(encoding="utf-8"),
+        ).get("name", "")
+        if name and isinstance(name, str):
+            name = name.strip()
+            if re.fullmatch(r"[a-zA-Z0-9_\-]+", name):
+                return name
+    except Exception:
+        pass
+    fallback = skill_dir.name
+    fallback = re.sub(r"[^a-zA-Z0-9_\-]", "_", fallback)
+    return fallback or "unnamed_skill"
+
+
+def _find_skill_dirs(root: Path) -> list[tuple[Path, str]]:
+    """Return (skill_dir, skill_name) pairs found under *root*."""
+    if (root / "SKILL.md").exists():
+        return [(root, _resolve_skill_name(root))]
+    return [
+        (c, _resolve_skill_name(c))
+        for c in sorted(root.iterdir())
+        if not _is_hidden(c.name) and c.is_dir() and (c / "SKILL.md").exists()
+    ]
+
+
+def _import_skill_dir(
+    src_dir: Path,
+    customized_dir: Path,
+    skill_name: str,
+    overwrite: bool,
+) -> bool:
+    """Validate SKILL.md and copy *src_dir* into *customized_dir*."""
+    try:
+        post = frontmatter.loads(
+            (src_dir / "SKILL.md").read_text(encoding="utf-8"),
+        )
+        if not post.get("name") or not post.get("description"):
+            logger.warning(
+                "Skipping '%s': missing name/description.",
+                skill_name,
+            )
+            return False
+    except Exception as e:
+        logger.warning(
+            "Skipping '%s': bad SKILL.md: %s",
+            skill_name,
+            e,
+        )
+        return False
+
+    target_dir = customized_dir / skill_name
+    if target_dir.exists() and not overwrite:
+        return False
+    try:
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+        shutil.copytree(
+            src_dir,
+            target_dir,
+            ignore=shutil.ignore_patterns("__MACOSX", ".*"),
+        )
+        logger.info("Imported skill '%s' from zip.", skill_name)
+        return True
+    except Exception as e:
+        logger.error(
+            "Failed to import skill '%s': %s",
+            skill_name,
+            e,
+        )
+        return False
+
+
 class SkillService:
     """
     Service for managing skills.
@@ -557,21 +665,6 @@ class SkillService:
         except Exception as e:
             logger.debug(
                 "Failed to back-sync skills: %s",
-                e,
-            )
-
-        try:
-            synced, _ = sync_skills_to_working_dir(
-                self.workspace_dir,
-            )
-            if synced > 0:
-                logger.debug(
-                    "Forward-synced %d skill(s) to active_skills",
-                    synced,
-                )
-        except Exception as e:
-            logger.debug(
-                "Failed to forward-sync skills: %s",
                 e,
             )
 
@@ -903,6 +996,93 @@ class SkillService:
             self.workspace_dir,
             skill_names=skill_names,
         )
+
+    def import_from_zip(
+        self,
+        data: bytes,
+        overwrite: bool = False,
+        enable: bool = False,
+    ) -> dict:
+        """Import skill(s) from a zip archive.
+
+        Returns dict with ``imported`` (list of names), ``count``,
+        and ``enabled`` flag.
+
+        Raises ValueError when zip is invalid or contains no skills.
+        """
+        if not zipfile.is_zipfile(io.BytesIO(data)):
+            raise ValueError(
+                "Uploaded file is not a valid zip archive",
+            )
+
+        customized_dir = get_customized_skills_dir(
+            self.workspace_dir,
+        )
+        customized_dir.mkdir(parents=True, exist_ok=True)
+        tmp_dir: Path | None = None
+        try:
+            tmp_dir = Path(
+                tempfile.mkdtemp(prefix="copaw_skill_upload_"),
+            )
+            _extract_and_validate_zip(data, tmp_dir)
+
+            # Unwrap single wrapper directory
+            real = [e for e in tmp_dir.iterdir() if not _is_hidden(e.name)]
+            extract_root = (
+                real[0] if len(real) == 1 and real[0].is_dir() else tmp_dir
+            )
+
+            found = _find_skill_dirs(extract_root)
+            if not found:
+                raise ValueError(
+                    "No valid skills found in zip. Each skill "
+                    "directory must contain a SKILL.md with "
+                    "valid YAML frontmatter.",
+                )
+            imported = [
+                name
+                for skill_dir, name in found
+                if _import_skill_dir(
+                    skill_dir,
+                    customized_dir,
+                    name,
+                    overwrite,
+                )
+            ]
+
+            # --- Security scan (post-write) --------------------------
+            try:
+                from ..security.skill_scanner import (
+                    SkillScanError,
+                    scan_skill_directory,
+                )
+
+                for name in imported:
+                    scan_skill_directory(
+                        customized_dir / name,
+                        skill_name=name,
+                    )
+            except SkillScanError:
+                raise
+            except Exception as scan_exc:
+                logger.warning(
+                    "Security scan error during zip import (non-fatal): %s",
+                    scan_exc,
+                )
+            # ---------------------------------------------------------
+
+            if enable:
+                for name in imported:
+                    self.enable_skill(name, force=True)
+
+            return {
+                "imported": imported,
+                "count": len(imported),
+                "enabled": enable and len(imported) > 0,
+            }
+        finally:
+            if tmp_dir and tmp_dir.is_dir():
+                shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def load_skill_file(  # pylint: disable=too-many-return-statements
         self,
