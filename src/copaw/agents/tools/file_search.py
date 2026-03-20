@@ -12,7 +12,7 @@ from agentscope.tool import ToolResponse
 
 from ...constant import WORKING_DIR
 from ...config.context import get_current_workspace_dir
-from .file_io import _resolve_file_path
+from .file_io import _resolve_file_path, _check_path_allowed
 
 # Skip binary / large files
 _BINARY_EXTENSIONS = frozenset(
@@ -118,6 +118,18 @@ async def grep_search(  # pylint: disable=too-many-branches
         if path
         else (get_current_workspace_dir() or WORKING_DIR)
     )
+
+    # Check workspace restriction
+    allowed, error_msg = _check_path_allowed(str(search_root))
+    if not allowed:
+        return ToolResponse(
+            content=[
+                TextBlock(
+                    type="text",
+                    text=f"Error: {error_msg}",
+                ),
+            ],
+        )
 
     if not search_root.exists():
         return ToolResponse(
@@ -246,6 +258,18 @@ async def glob_search(
         if path
         else (get_current_workspace_dir() or WORKING_DIR)
     )
+
+    # Check workspace restriction
+    allowed, error_msg = _check_path_allowed(str(search_root))
+    if not allowed:
+        return ToolResponse(
+            content=[
+                TextBlock(
+                    type="text",
+                    text=f"Error: {error_msg}",
+                ),
+            ],
+        )
 
     if not search_root.exists():
         return ToolResponse(

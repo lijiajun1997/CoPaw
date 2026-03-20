@@ -561,7 +561,45 @@ class BaseChannel(ABC):
 
         last_response = None
         try:
-            async for event in self._process(request):
+            # Multi-user support: get the correct process based on user_id
+            process = self._process
+            user_id = getattr(request, "user_id", None)
+            logger.info(
+                "DEBUG _run_process_loop: user_id=%s, has_process=%s",
+                user_id,
+                process is not None,
+            )
+            if user_id:
+                try:
+                    # Import here to avoid circular import
+                    from ..multi_agent_manager import get_multi_agent_manager
+
+                    manager = get_multi_agent_manager()
+                    logger.info(
+                        "DEBUG: get_multi_agent_manager returned: %s",
+                        manager is not None,
+                    )
+                    if manager:
+                        workspace = await manager.get_agent(user_id)
+                        logger.info(
+                            "DEBUG: get_agent returned workspace: %s",
+                            workspace.agent_id if workspace else None,
+                        )
+                        if workspace and workspace.runner:
+                            process = workspace.runner.stream_query
+                            logger.info(
+                                "Multi-user: routing user '%s' to workspace '%s'",
+                                user_id,
+                                workspace.agent_id,
+                            )
+                except Exception as e:
+                    logger.warning(
+                        "Multi-user routing failed, using default: %s",
+                        e,
+                        exc_info=True,
+                    )
+
+            async for event in process(request):
                 obj = getattr(event, "object", None)
                 status = getattr(event, "status", None)
                 if obj == "message" and status == RunStatus.Completed:

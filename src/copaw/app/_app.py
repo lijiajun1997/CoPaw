@@ -63,12 +63,42 @@ class DynamicMultiAgentRunner:
 
     async def _get_workspace_runner(self, request):
         """Get the correct workspace runner based on request."""
-        from .agent_context import get_current_agent_id
+        from .agent_context import get_current_agent_id, _current_agent_id
 
         # Get agent_id from context (set by middleware or header)
         agent_id = get_current_agent_id()
 
-        logger.debug(f"_get_workspace_runner: agent_id={agent_id}")
+        # Multi-user support: use user_id as agent_id if no explicit agent_id
+        # Check if context var was explicitly set (not just fallback to default)
+        context_agent_id = _current_agent_id.get()
+        logger.info(
+            f"_get_workspace_runner: initial agent_id={agent_id}, "
+            f"context_agent_id={context_agent_id}"
+        )
+        if context_agent_id is None:
+            # No explicit agent_id set, try to use user_id from request
+            user_id = None
+
+            # Check if request has user_id attribute (from AgentRequest)
+            if hasattr(request, "user_id") and request.user_id:
+                user_id = request.user_id
+                logger.info(f"Found user_id in request attribute: {user_id}")
+            # Check request.state for user_id
+            elif hasattr(request, "state") and hasattr(request.state, "user_id"):
+                user_id = request.state.user_id
+                logger.info(f"Found user_id in request.state: {user_id}")
+            else:
+                logger.info(
+                    f"No user_id found. request attrs: {dir(request)[:10]}"
+                )
+
+            if user_id:
+                agent_id = user_id
+                logger.info(
+                    f"Multi-user mode: using user_id '{user_id}' as agent_id"
+                )
+
+        logger.info(f"_get_workspace_runner: final agent_id={agent_id}")
 
         # Get the correct workspace runner
         if not self._multi_agent_manager:
@@ -181,6 +211,10 @@ async def lifespan(
     # --- Multi-agent manager initialization ---
     logger.info("Initializing MultiAgentManager...")
     multi_agent_manager = MultiAgentManager()
+
+    # Set global instance for multi-user routing
+    from .multi_agent_manager import set_multi_agent_manager
+    set_multi_agent_manager(multi_agent_manager)
 
     # Start all configured agents (handled by manager)
     await multi_agent_manager.start_all_configured_agents()

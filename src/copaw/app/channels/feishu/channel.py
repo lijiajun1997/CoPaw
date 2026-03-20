@@ -688,6 +688,7 @@ class FeishuChannel(BaseChannel):
                     url_or_path = await self._download_image_resource(
                         message_id,
                         img_key,
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -703,6 +704,7 @@ class FeishuChannel(BaseChannel):
                     url_or_path = await self._download_file_resource(
                         message_id,
                         file_key,
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -725,6 +727,7 @@ class FeishuChannel(BaseChannel):
                     url_or_path = await self._download_image_resource(
                         message_id,
                         image_key,
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -747,6 +750,7 @@ class FeishuChannel(BaseChannel):
                     url_or_path = await self._download_file_resource(
                         message_id,
                         file_key,
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -770,6 +774,7 @@ class FeishuChannel(BaseChannel):
                         message_id,
                         file_key,
                         filename_hint="audio.opus",
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -835,7 +840,8 @@ class FeishuChannel(BaseChannel):
             native = {
                 "channel_id": self.channel,
                 "sender_id": sender_display,
-                "user_id": sender_display,
+                "user_id": sender_id,  # Use raw open_id for multi-user mapping
+                "user_display_name": sender_display,  # User friendly name for agent
                 "session_id": session_id,
                 "content_parts": content_parts,
                 "meta": meta,
@@ -905,14 +911,40 @@ class FeishuChannel(BaseChannel):
         self,
         message_id: str,
         image_key: str,
+        user_id: Optional[str] = None,
     ) -> Optional[str]:
-        """Download image to media_dir; return local path or None."""
+        """Download image to media_dir; return local path or None.
+
+        For multi-user support, downloads to user's workspace media dir
+        if user_id is provided and workspace exists.
+        """
         token = await self._get_tenant_access_token()
         url = (
             f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}"
             f"/resources/{image_key}"
         )
         headers = {"Authorization": f"Bearer {token}"}
+
+        # Determine media directory based on user_id
+        media_dir = self._media_dir
+        if user_id:
+            try:
+                from ...multi_agent_manager import (
+                    get_multi_agent_manager,
+                    _sanitize_agent_id,
+                )
+
+                manager = get_multi_agent_manager()
+                if manager:
+                    safe_user_id = _sanitize_agent_id(user_id)
+                    if safe_user_id in manager.agents:
+                        workspace = manager.agents[safe_user_id]
+                        user_media_dir = workspace.workspace_dir / "media"
+                        user_media_dir.mkdir(parents=True, exist_ok=True)
+                        media_dir = user_media_dir
+            except Exception:
+                pass
+
         try:
             async with self._http.get(
                 url,
@@ -936,8 +968,8 @@ class FeishuChannel(BaseChannel):
                 "".join(c for c in image_key if c.isalnum() or c in "-_.")
                 or "img"
             )
-            self._media_dir.mkdir(parents=True, exist_ok=True)
-            path = self._media_dir / f"{message_id}_{safe_key}.{ext}"
+            media_dir.mkdir(parents=True, exist_ok=True)
+            path = media_dir / f"{message_id}_{safe_key}.{ext}"
             path.write_bytes(data)
             return str(path)
         except Exception:
@@ -949,10 +981,21 @@ class FeishuChannel(BaseChannel):
         message_id: str,
         file_key: str,
         filename_hint: str = "file.bin",
+        user_id: Optional[str] = None,
     ) -> Optional[str]:
         """Download file to media_dir; return local path or None.
+
         Uses message resources API (user-sent files); /im/v1/files only
         allows app-sent files.
+
+        For multi-user support, downloads to user's workspace media dir
+        if user_id is provided and workspace exists.
+
+        Args:
+            message_id: Feishu message ID
+            file_key: File key for download
+            filename_hint: Suggested filename
+            user_id: Optional user ID for multi-user routing
         """
         token = await self._get_tenant_access_token()
         url = (
@@ -960,6 +1003,30 @@ class FeishuChannel(BaseChannel):
             f"{message_id}/resources/{file_key}?type=file"
         )
         headers = {"Authorization": f"Bearer {token}"}
+
+        # Determine media directory based on user_id
+        media_dir = self._media_dir
+        if user_id:
+            try:
+                from ...multi_agent_manager import (
+                    get_multi_agent_manager,
+                    _sanitize_agent_id,
+                )
+
+                manager = get_multi_agent_manager()
+                if manager:
+                    safe_user_id = _sanitize_agent_id(user_id)
+                    if safe_user_id in manager.agents:
+                        workspace = manager.agents[safe_user_id]
+                        user_media_dir = workspace.workspace_dir / "media"
+                        user_media_dir.mkdir(parents=True, exist_ok=True)
+                        media_dir = user_media_dir
+                        logger.debug(
+                            f"Multi-user: downloading file to user media dir: {media_dir}"
+                        )
+            except Exception as e:
+                logger.warning(f"Failed to get user media dir: {e}, using default")
+
         try:
             async with self._http.get(url, headers=headers) as resp:
                 if resp.status >= 400:
@@ -998,8 +1065,8 @@ class FeishuChannel(BaseChannel):
                 "".join(c for c in file_key if c.isalnum() or c in "-_.")
                 or "file"
             )
-            self._media_dir.mkdir(parents=True, exist_ok=True)
-            path = self._media_dir / f"{message_id}_{safe_key}_{filename}"
+            media_dir.mkdir(parents=True, exist_ok=True)
+            path = media_dir / f"{message_id}_{safe_key}_{filename}"
             path.write_bytes(data)
             if path.suffix in (".bin", ".file") and content_type:
                 ext = mimetypes.guess_extension(content_type)
@@ -1745,7 +1812,34 @@ class FeishuChannel(BaseChannel):
         last_message_id: Optional[str] = None
         last_response = None
         try:
-            async for event in self._process(request):
+            # Multi-user support: get the correct process based on user_id
+            process = self._process
+            user_id = getattr(request, "user_id", None)
+            user_display_name = getattr(request, "user_display_name", None)
+            if user_id:
+                try:
+                    from ...multi_agent_manager import get_multi_agent_manager
+
+                    manager = get_multi_agent_manager()
+                    if manager:
+                        workspace = await manager.get_agent(
+                            user_id,
+                            display_name=user_display_name,
+                        )
+                        if workspace and workspace.runner:
+                            process = workspace.runner.stream_query
+                            logger.info(
+                                "Multi-user: routing user '%s' to workspace '%s'",
+                                user_display_name or user_id,
+                                workspace.agent_id,
+                            )
+                except Exception as e:
+                    logger.warning(
+                        "Multi-user routing failed, using default: %s",
+                        e,
+                    )
+
+            async for event in process(request):
                 obj = getattr(event, "object", None)
                 status = getattr(event, "status", None)
                 if obj == "message" and status == RunStatus.Completed:

@@ -819,6 +819,15 @@
         "warnDescription": "Security issues were found but the skill was still enabled (warn mode):",
         "goToWhitelist": "Go to Whitelist"
       }
+    },
+    "workspaceRestriction": {
+      "title": "Workspace Restriction",
+      "description": "Restrict agents to only access files within their own workspace directory. When enabled, accessing files outside the workspace requires administrator permission.",
+      "enabled": "Enable Workspace Restriction",
+      "enabledTooltip": "When enabled, agent file tools can only access files within their workspace directory",
+      "allowPatterns": "Allowed Path Patterns",
+      "allowPatternsTooltip": "One glob pattern per line for paths that are allowed. E.g., /tmp/* allows access to temp directory",
+      "allowPatternsPlaceholder": "/tmp/*\n/var/log/*\nD:/Shared/*"
     }
   },
   "login": {

@@ -778,12 +778,34 @@ class SkillScannerConfig(BaseModel):
     )
 
 
+class WorkspaceRestrictionConfig(BaseModel):
+    """Workspace restriction settings under ``security.workspace_restriction``.
+
+    When enabled, agent tools can only access files within their own workspace
+    directory. Accessing files outside the workspace requires explicit permission.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Enable workspace restriction. When True, agents can only "
+        "access files within their workspace directory.",
+    )
+    allow_patterns: List[str] = Field(
+        default_factory=lambda: [],
+        description="Glob patterns for paths allowed outside workspace. "
+        "E.g., ['/tmp/*', '/var/log/*'] to allow access to temp and log dirs.",
+    )
+
+
 class SecurityConfig(BaseModel):
     """Top-level ``security`` section in config.json."""
 
     tool_guard: ToolGuardConfig = Field(default_factory=ToolGuardConfig)
     skill_scanner: SkillScannerConfig = Field(
         default_factory=SkillScannerConfig,
+    )
+    workspace_restriction: WorkspaceRestrictionConfig = Field(
+        default_factory=WorkspaceRestrictionConfig,
     )
 
 

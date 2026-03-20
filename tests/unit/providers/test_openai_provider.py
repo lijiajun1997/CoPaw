@@ -249,20 +249,25 @@ async def test_update_config_updates_chat_model_for_custom_provider() -> None:
     assert info.chat_model == "AnotherChatModel"
 
 
-async def test_update_config_does_not_update_base_url_when_frozen() -> None:
+async def test_update_config_updates_base_url_regardless_of_freeze_url() -> None:
+    """Test that base_url can be updated even when freeze_url is True.
+
+    Note: freeze_url restriction was removed to allow free base URL configuration.
+    """
     provider = _make_provider()
     provider.freeze_url = True
 
     provider.update_config(
         {
-            "base_url": "https://blocked.example/v1",
+            "base_url": "https://updated.example/v1",
             "api_key": "sk-frozen",
         },
     )
 
     info = await provider.get_info(mock_secret=False)
 
-    assert provider.base_url == "https://mock-openai.local/v1"
+    # base_url should be updated (freeze_url restriction removed)
+    assert provider.base_url == "https://updated.example/v1"
     assert provider.api_key == "sk-frozen"
-    assert info.base_url == "https://mock-openai.local/v1"
+    assert info.base_url == "https://updated.example/v1"
     assert info.api_key == "sk-frozen"

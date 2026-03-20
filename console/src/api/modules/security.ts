@@ -20,6 +20,13 @@ export interface ToolGuardConfig {
   disabled_rules: string[];
 }
 
+// ── Workspace Restriction types ─────────────────────────────────────
+
+export interface WorkspaceRestrictionConfig {
+  enabled: boolean;
+  allow_patterns: string[];
+}
+
 // ── Skill Scanner types ────────────────────────────────────────────
 
 export interface SkillScannerWhitelistEntry {
@@ -122,5 +129,21 @@ export const securityApi = {
         skillName,
       )}`,
       { method: "DELETE" },
+    ),
+
+  // ── Workspace Restriction ────────────────────────────────────────
+
+  getWorkspaceRestriction: () =>
+    request<WorkspaceRestrictionConfig>(
+      "/config/security/workspace-restriction",
+    ),
+
+  updateWorkspaceRestriction: (body: WorkspaceRestrictionConfig) =>
+    request<WorkspaceRestrictionConfig>(
+      "/config/security/workspace-restriction",
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      },
     ),
 };

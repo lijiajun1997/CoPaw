@@ -5,13 +5,69 @@ Provides centralized management for multiple Workspace objects,
 including lazy loading, lifecycle management, and hot reloading.
 """
 import asyncio
+import json
 import logging
-from typing import Dict, Set
+import re
+import shutil
+import tempfile
+from pathlib import Path
+from typing import Dict, Optional, Set
 
 from .workspace import Workspace
-from ..config.utils import load_config
+from ..config.utils import load_config, get_config_path
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_agent_id(agent_id: str) -> str:
+    """Sanitize agent_id to be safe for use as directory name.
+
+    Replaces or removes characters that are not safe for file paths.
+
+    Args:
+        agent_id: Raw agent ID (e.g., from channel user_id)
+
+    Returns:
+        Sanitized agent ID safe for use as directory name
+    """
+    if not agent_id:
+        return "unknown"
+
+    # Replace unsafe characters with underscore
+    # Unsafe: / \ : * ? " < > | and control characters
+    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', agent_id)
+
+    # Remove leading/trailing spaces and dots
+    sanitized = sanitized.strip(' .')
+
+    # Ensure non-empty
+    if not sanitized:
+        return "unknown"
+
+    # Truncate if too long (max 100 chars for reasonable path length)
+    if len(sanitized) > 100:
+        sanitized = sanitized[:100]
+
+    return sanitized
+
+
+# Global reference to MultiAgentManager instance
+_multi_agent_manager_instance: Optional["MultiAgentManager"] = None
+
+
+def get_multi_agent_manager() -> Optional["MultiAgentManager"]:
+    """Get the global MultiAgentManager instance.
+
+    Returns:
+        MultiAgentManager instance or None if not initialized
+    """
+    return _multi_agent_manager_instance
+
+
+def set_multi_agent_manager(manager: "MultiAgentManager") -> None:
+    """Set the global MultiAgentManager instance."""
+    global _multi_agent_manager_instance
+    _multi_agent_manager_instance = manager
 
 
 class MultiAgentManager:
@@ -31,7 +87,11 @@ class MultiAgentManager:
         self._cleanup_tasks: Set[asyncio.Task] = set()
         logger.debug("MultiAgentManager initialized")
 
-    async def get_agent(self, agent_id: str) -> Workspace:
+    async def get_agent(
+        self,
+        agent_id: str,
+        display_name: Optional[str] = None,
+    ) -> Workspace:
         """Get agent workspace by ID (lazy loading).
 
         If workspace doesn't exist in memory, it will be created and started.
@@ -39,6 +99,7 @@ class MultiAgentManager:
 
         Args:
             agent_id: Agent ID to retrieve
+            display_name: Optional display name for the agent (used when creating new agent)
 
         Returns:
             Workspace: The requested workspace instance
@@ -46,39 +107,258 @@ class MultiAgentManager:
         Raises:
             ValueError: If agent ID not found in configuration
         """
+        # Sanitize agent_id for multi-user support
+        safe_agent_id = _sanitize_agent_id(agent_id) if agent_id else "default"
+
         async with self._lock:
             # Return existing agent if already loaded
-            if agent_id in self.agents:
-                logger.debug(f"Returning cached agent: {agent_id}")
-                return self.agents[agent_id]
+            if safe_agent_id in self.agents:
+                logger.debug(f"Returning cached agent: {safe_agent_id}")
+                return self.agents[safe_agent_id]
 
             # Load configuration to get agent reference
             config = load_config()
 
-            if agent_id not in config.agents.profiles:
+            # Auto-create agent config if not exists (for multi-user support)
+            if safe_agent_id not in config.agents.profiles:
+                logger.info(
+                    f"Agent '{safe_agent_id}' not found in configuration. "
+                    f"Auto-creating for multi-user support..."
+                )
+                await self._ensure_user_agent_exists(safe_agent_id, display_name)
+                # Reload config after creation
+                config = load_config()
+
+            if safe_agent_id not in config.agents.profiles:
                 raise ValueError(
-                    f"Agent '{agent_id}' not found in configuration. "
+                    f"Agent '{safe_agent_id}' not found in configuration. "
                     f"Available agents: {list(config.agents.profiles.keys())}",
                 )
 
-            agent_ref = config.agents.profiles[agent_id]
+            agent_ref = config.agents.profiles[safe_agent_id]
 
             # Create and start new workspace
-            logger.info(f"Creating new workspace: {agent_id}")
+            logger.info(f"Creating new workspace: {safe_agent_id}")
             instance = Workspace(
-                agent_id=agent_id,
+                agent_id=safe_agent_id,
                 workspace_dir=agent_ref.workspace_dir,
             )
 
             try:
                 await instance.start()
                 instance.set_manager(self)  # Set manager reference
-                self.agents[agent_id] = instance
-                logger.info(f"Workspace created and started: {agent_id}")
+                self.agents[safe_agent_id] = instance
+                logger.info(f"Workspace created and started: {safe_agent_id}")
                 return instance
             except Exception as e:
-                logger.error(f"Failed to start workspace {agent_id}: {e}")
+                logger.error(f"Failed to start workspace {safe_agent_id}: {e}")
                 raise
+
+    async def _ensure_user_agent_exists(
+        self,
+        agent_id: str,
+        display_name: Optional[str] = None,
+    ) -> None:
+        """Ensure user agent config exists, create if not.
+
+        This method creates a workspace directory and configuration for
+        a new user agent, copying from the default agent as template.
+
+        Note: agent_id should already be sanitized by caller.
+        This method is called within the lock in get_agent(), so it's
+        thread-safe for concurrent access.
+
+        Args:
+            agent_id: The sanitized agent ID to create an agent for
+            display_name: Optional display name for the agent
+
+        Raises:
+            RuntimeError: If failed to create user agent workspace
+        """
+        from ..config.utils import WORKING_DIR
+
+        working_dir = Path(WORKING_DIR)
+
+        # User agent workspace directory
+        user_workspace_dir = working_dir / "workspaces" / agent_id
+
+        # Check if config already has this agent
+        config = load_config()
+        config_has_agent = agent_id in config.agents.profiles
+
+        # Check if workspace directory exists
+        dir_exists = user_workspace_dir.exists()
+
+        if config_has_agent:
+            logger.debug(f"User agent already in config: {agent_id}")
+            return
+
+        if dir_exists:
+            logger.debug(f"User workspace directory exists but not in config: {agent_id}")
+            # Directory exists but config missing - update agent.json and add config entry
+            agent_name = display_name or agent_id
+            self._update_agent_config(user_workspace_dir, agent_id, agent_name)
+            self._add_agent_to_config(agent_id, str(user_workspace_dir), agent_name)
+            logger.info(f"Added existing workspace to config for user: {agent_name}")
+            return
+
+        # Use display_name if provided, otherwise use agent_id
+        agent_name = display_name or agent_id
+
+        try:
+            # Copy default agent config as template
+            default_dir = working_dir / "workspaces" / "default"
+
+            if default_dir.exists():
+                shutil.copytree(default_dir, user_workspace_dir)
+                # Update agent.json with correct id and name
+                self._update_agent_config(user_workspace_dir, agent_id, agent_name)
+                logger.info(f"Copied default workspace for user: {agent_name}")
+            else:
+                # Create minimal config if no default exists
+                user_workspace_dir.mkdir(parents=True, exist_ok=True)
+                self._create_minimal_agent_config(user_workspace_dir, agent_id, agent_name)
+                logger.info(f"Created minimal workspace for user: {agent_name}")
+
+            # Add agent reference to root config
+            self._add_agent_to_config(agent_id, str(user_workspace_dir), agent_name)
+
+        except Exception as e:
+            # Clean up partially created directory on failure
+            if user_workspace_dir.exists():
+                try:
+                    shutil.rmtree(user_workspace_dir)
+                except Exception:
+                    pass
+            logger.error(f"Failed to create user agent workspace: {e}")
+            raise RuntimeError(
+                f"Failed to create workspace for agent '{agent_id}': {e}"
+            ) from e
+
+    def _update_agent_config(
+        self,
+        workspace_dir: Path,
+        agent_id: str,
+        agent_name: Optional[str] = None,
+    ) -> None:
+        """Update agent.json with correct id and name."""
+        agent_json_path = workspace_dir / "agent.json"
+        if not agent_json_path.exists():
+            return
+
+        try:
+            with open(agent_json_path, encoding="utf-8") as f:
+                config = json.load(f)
+
+            config["id"] = agent_id
+            config["name"] = agent_name or agent_id
+
+            with open(agent_json_path, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            logger.warning(f"Failed to update agent config: {e}")
+
+    def _create_minimal_agent_config(
+        self,
+        workspace_dir: Path,
+        agent_id: str,
+        agent_name: Optional[str] = None,
+    ) -> None:
+        """Create minimal agent.json for a new user.
+
+        Args:
+            workspace_dir: Path to the workspace directory
+            agent_id: The user ID
+            agent_name: The display name for the agent
+        """
+        config = {
+            "id": agent_id,
+            "name": agent_name or agent_id,
+            "workspace_dir": str(workspace_dir),
+            "channels": {},
+            "mcp": {"servers": {}},
+            "running": {
+                "max_iters": 10,
+                "max_input_length": 128000,
+            },
+        }
+
+        agent_json_path = workspace_dir / "agent.json"
+        with open(agent_json_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+
+        # Create AGENTS.md placeholder
+        agents_md_path = workspace_dir / "AGENTS.md"
+        if not agents_md_path.exists():
+            agents_md_path.write_text(
+                f"# {agent_id}\n\nUser-specific agent workspace.\n",
+                encoding="utf-8",
+            )
+
+    def _add_agent_to_config(
+        self,
+        agent_id: str,
+        workspace_dir: str,
+        agent_name: Optional[str] = None,
+    ) -> None:
+        """Add agent reference to root config.json.
+
+        Uses atomic write (write to temp file, then rename) to prevent
+        config corruption during concurrent access.
+
+        Args:
+            agent_id: The user ID
+            workspace_dir: Path to the workspace directory
+            agent_name: The display name for the agent
+        """
+        import tempfile
+
+        config_path = get_config_path()
+
+        try:
+            with open(config_path, encoding="utf-8") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            logger.warning(f"Failed to load config, creating new: {e}")
+            config = {}
+
+        if "agents" not in config:
+            config["agents"] = {"active_agent": "default", "profiles": {}}
+
+        if "profiles" not in config["agents"]:
+            config["agents"]["profiles"] = {}
+
+        config["agents"]["profiles"][agent_id] = {
+            "id": agent_id,
+            "name": agent_name or agent_id,
+            "workspace_dir": workspace_dir,
+        }
+
+        # Atomic write: write to temp file first, then rename
+        config_path_obj = Path(config_path)
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=config_path_obj.parent,
+            prefix=".config.tmp",
+            suffix=".json",
+            delete=False,
+        ) as tmp_file:
+            json.dump(config, tmp_file, indent=2, ensure_ascii=False)
+            tmp_path = Path(tmp_file.name)
+
+        # Atomic rename (on POSIX systems, and works on Windows too)
+        try:
+            tmp_path.replace(config_path_obj)
+            logger.info(f"Successfully added agent '{agent_id}' to config.json")
+        except Exception as e:
+            logger.error(f"Failed to replace config file: {e}")
+            # Try to clean up temp file
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise
 
     async def _graceful_stop_old_instance(
         self,

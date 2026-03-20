@@ -7,15 +7,18 @@ import {
   Select,
   message,
   Tabs,
+  Input,
 } from "@agentscope-ai/design";
 import {
   PlusCircleOutlined,
   SafetyOutlined,
   ScanOutlined,
+  LockOutlined,
 } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import api from "../../../api";
 import { useToolGuard, type MergedRule } from "./useToolGuard";
+import { useWorkspaceRestriction } from "./useWorkspaceRestriction";
 import {
   PageHeader,
   RuleTable,
@@ -39,6 +42,116 @@ const BUILTIN_TOOLS = [
   "write_text_file",
   "send_file_to_user",
 ];
+
+// Workspace Restriction Section Component
+function WorkspaceRestrictionSection() {
+  const { t } = useTranslation();
+  const [form] = Form.useForm();
+  const [saving, setSaving] = useState(false);
+
+  const { config, setConfig, loading, error, fetchConfig, updateConfig } =
+    useWorkspaceRestriction();
+
+  const handleSave = useCallback(async () => {
+    try {
+      setSaving(true);
+      const values = await form.validateFields();
+      const patterns = (values.allow_patterns || "")
+        .split("\n")
+        .map((s: string) => s.trim())
+        .filter(Boolean);
+      const newConfig = {
+        enabled: values.enabled,
+        allow_patterns: patterns,
+      };
+      await updateConfig(newConfig);
+      message.success(t("security.saveSuccess"));
+    } catch (err) {
+      const errMsg =
+        err instanceof Error ? err.message : t("security.saveFailed");
+      message.error(errMsg);
+    } finally {
+      setSaving(false);
+    }
+  }, [form, updateConfig, t]);
+
+  const handleReset = useCallback(() => {
+    form.resetFields();
+    fetchConfig();
+  }, [form, fetchConfig]);
+
+  if (loading) {
+    return (
+      <div className={styles.tabContent}>
+        <span className={styles.stateText}>{t("common.loading")}</span>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={styles.tabContent}>
+        <span className={styles.stateTextError}>{error}</span>
+        <Button size="small" onClick={fetchConfig} style={{ marginTop: 12 }}>
+          {t("environments.retry")}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.tabContent}>
+      <p className={styles.tabDescription}>
+        {t("security.workspaceRestriction.description")}
+      </p>
+
+      <Card className={styles.formCard}>
+        <Form
+          form={form}
+          layout="vertical"
+          className={styles.form}
+          initialValues={{
+            enabled: config?.enabled ?? false,
+            allow_patterns: (config?.allow_patterns || []).join("\n"),
+          }}
+        >
+          <Form.Item
+            label={t("security.workspaceRestriction.enabled")}
+            name="enabled"
+            valuePropName="checked"
+            tooltip={t("security.workspaceRestriction.enabledTooltip")}
+          >
+            <Switch
+              onChange={(val) => setConfig({ ...config, enabled: val })}
+            />
+          </Form.Item>
+
+          <Form.Item
+            label={t("security.workspaceRestriction.allowPatterns")}
+            name="allow_patterns"
+            tooltip={t("security.workspaceRestriction.allowPatternsTooltip")}
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder={t(
+                "security.workspaceRestriction.allowPatternsPlaceholder",
+              )}
+            />
+          </Form.Item>
+        </Form>
+      </Card>
+
+      <div className={styles.footerButtons}>
+        <Button onClick={handleReset} disabled={saving} style={{ marginRight: 8 }}>
+          {t("common.reset")}
+        </Button>
+        <Button type="primary" onClick={handleSave} loading={saving}>
+          {t("common.save")}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function SecurityPage() {
   const { t } = useTranslation();
@@ -328,6 +441,16 @@ function SecurityPage() {
                   </div>
                 </div>
               ),
+            },
+            {
+              key: "workspaceRestriction",
+              label: (
+                <span className={styles.tabLabel}>
+                  <LockOutlined />
+                  {t("security.workspaceRestriction.title")}
+                </span>
+              ),
+              children: <WorkspaceRestrictionSection />,
             },
             {
               key: "skillScanner",

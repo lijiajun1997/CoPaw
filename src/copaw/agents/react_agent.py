@@ -258,7 +258,10 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
             skill_dir = working_skills_dir / skill_name
             if skill_dir.exists():
                 try:
-                    toolkit.register_agent_skill(str(skill_dir))
+                    # Always use absolute path for skill directory
+                    # to ensure scripts can be executed correctly
+                    abs_skill_dir = skill_dir.resolve()
+                    toolkit.register_agent_skill(str(abs_skill_dir))
                     logger.debug("Registered skill: %s", skill_name)
                 except Exception as e:
                     logger.error(

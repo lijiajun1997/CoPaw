@@ -10,7 +10,7 @@ from agentscope.tool import ToolResponse
 
 from ...constant import WORKING_DIR
 from ...config.context import get_current_workspace_dir
-from .utils import truncate_file_output, read_file_safe
+from .utils import truncate_file_output, read_file_safe, check_workspace_restriction
 
 
 def _resolve_file_path(file_path: str) -> str:
@@ -30,6 +30,19 @@ def _resolve_file_path(file_path: str) -> str:
         # Use current workspace_dir from context, fallback to WORKING_DIR
         workspace_dir = get_current_workspace_dir() or WORKING_DIR
         return str(workspace_dir / file_path)
+
+
+def _check_path_allowed(resolved_path: str) -> tuple[bool, str]:
+    """Check if the resolved path is allowed under workspace restriction.
+
+    Args:
+        resolved_path: The resolved absolute file path.
+
+    Returns:
+        (is_allowed, error_message)
+    """
+    workspace_dir = get_current_workspace_dir()
+    return check_workspace_restriction(resolved_path, workspace_dir)
 
 
 async def read_file(  # pylint: disable=too-many-return-statements
@@ -79,6 +92,18 @@ async def read_file(  # pylint: disable=too-many-return-statements
             )
 
     file_path = _resolve_file_path(file_path)
+
+    # Check workspace restriction
+    allowed, error_msg = _check_path_allowed(file_path)
+    if not allowed:
+        return ToolResponse(
+            content=[
+                TextBlock(
+                    type="text",
+                    text=f"Error: {error_msg}",
+                ),
+            ],
+        )
 
     if not os.path.exists(file_path):
         return ToolResponse(
@@ -187,6 +212,18 @@ async def write_file(
 
     file_path = _resolve_file_path(file_path)
 
+    # Check workspace restriction
+    allowed, error_msg = _check_path_allowed(file_path)
+    if not allowed:
+        return ToolResponse(
+            content=[
+                TextBlock(
+                    type="text",
+                    text=f"Error: {error_msg}",
+                ),
+            ],
+        )
+
     try:
         with open(file_path, "w", encoding="utf-8") as file:
             file.write(content)
@@ -238,6 +275,18 @@ async def edit_file(
         )
 
     resolved_path = _resolve_file_path(file_path)
+
+    # Check workspace restriction
+    allowed, error_msg = _check_path_allowed(resolved_path)
+    if not allowed:
+        return ToolResponse(
+            content=[
+                TextBlock(
+                    type="text",
+                    text=f"Error: {error_msg}",
+                ),
+            ],
+        )
 
     if not os.path.exists(resolved_path):
         return ToolResponse(
@@ -327,6 +376,18 @@ async def append_file(
         )
 
     file_path = _resolve_file_path(file_path)
+
+    # Check workspace restriction
+    allowed, error_msg = _check_path_allowed(file_path)
+    if not allowed:
+        return ToolResponse(
+            content=[
+                TextBlock(
+                    type="text",
+                    text=f"Error: {error_msg}",
+                ),
+            ],
+        )
 
     try:
         with open(file_path, "a", encoding="utf-8") as file:

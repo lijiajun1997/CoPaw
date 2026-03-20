@@ -14,6 +14,7 @@ from ...config import (
     get_available_channels,
     ToolGuardConfig,
     ToolGuardRuleConfig,
+    WorkspaceRestrictionConfig,
 )
 from ..channels.registry import BUILTIN_CHANNEL_KEYS
 from ...config.config import (
@@ -438,6 +439,33 @@ async def get_builtin_rules() -> List[ToolGuardRuleConfig]:
         )
         for r in rules
     ]
+
+
+# ── Security / Workspace Restriction ───────────────────────────────────
+
+
+@router.get(
+    "/security/workspace-restriction",
+    response_model=WorkspaceRestrictionConfig,
+    summary="Get workspace restriction settings",
+)
+async def get_workspace_restriction() -> WorkspaceRestrictionConfig:
+    config = load_config()
+    return config.security.workspace_restriction
+
+
+@router.put(
+    "/security/workspace-restriction",
+    response_model=WorkspaceRestrictionConfig,
+    summary="Update workspace restriction settings",
+)
+async def put_workspace_restriction(
+    body: WorkspaceRestrictionConfig = Body(...),
+) -> WorkspaceRestrictionConfig:
+    config = load_config()
+    config.security.workspace_restriction = body
+    save_config(config)
+    return body
 
 
 # ── Security / Skill Scanner ────────────────────────────────────────

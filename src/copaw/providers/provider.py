@@ -123,11 +123,7 @@ class Provider(ProviderInfo, ABC):
         """Update provider configuration with the given dictionary."""
         if "name" in config and config["name"] is not None:
             self.name = str(config["name"])
-        if (
-            not self.freeze_url
-            and "base_url" in config
-            and config["base_url"] is not None
-        ):
+        if "base_url" in config and config["base_url"] is not None:
             self.base_url = str(config["base_url"])
         if "api_key" in config and config["api_key"] is not None:
             self.api_key = str(config["api_key"])

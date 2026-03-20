@@ -1,9 +1,73 @@
 # -*- coding: utf-8 -*-
 """Shared utilities for file and shell tools."""
 
+import fnmatch
+from pathlib import Path
+from typing import Optional, Tuple
+
 # Default truncation limits
 DEFAULT_MAX_LINES = 1000
 DEFAULT_MAX_BYTES = 30 * 1024  # 30KB
+
+
+def check_workspace_restriction(
+    resolved_path: str,
+    workspace_dir: Optional[Path] = None,
+) -> Tuple[bool, str]:
+    """Check if a path is allowed under workspace restriction.
+
+    Args:
+        resolved_path: The absolute path to check.
+        workspace_dir: The agent's workspace directory. If None, uses default.
+
+    Returns:
+        (is_allowed, error_message) - is_allowed is True if path is permitted.
+    """
+    from ...config.utils import load_config, WORKING_DIR
+
+    # Load security config
+    try:
+        config = load_config()
+        restriction_config = config.security.workspace_restriction
+    except Exception:
+        # If config load fails, allow access
+        return True, ""
+
+    # If restriction is not enabled, allow all access
+    if not restriction_config.enabled:
+        return True, ""
+
+    # Determine workspace directory
+    if workspace_dir is None:
+        from ...config.context import get_current_workspace_dir
+
+        workspace_dir = get_current_workspace_dir() or WORKING_DIR
+
+    workspace_dir = Path(workspace_dir).resolve()
+    target_path = Path(resolved_path).resolve()
+
+    # Check if path is within workspace
+    try:
+        target_path.relative_to(workspace_dir)
+        return True, ""  # Path is within workspace
+    except ValueError:
+        pass  # Path is outside workspace
+
+    # Check allow_patterns
+    for pattern in restriction_config.allow_patterns:
+        # Normalize pattern for comparison
+        if fnmatch.fnmatch(str(target_path), pattern):
+            return True, ""
+        # Also try with the path string
+        if fnmatch.fnmatch(resolved_path, pattern):
+            return True, ""
+
+    # Path is outside workspace and not in allow_patterns
+    return False, (
+        f"Access denied: Path '{resolved_path}' is outside your workspace directory "
+        f"'{workspace_dir}'. Workspace restriction is enabled. "
+        f"Please ask the administrator to grant permission for this path."
+    )
 
 
 # pylint: disable=too-many-branches

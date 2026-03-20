@@ -249,12 +249,16 @@ async def test_add_custom_provider_conflict_resolution_loops_until_unique(
 def test_update_provider_for_builtin_persists_to_builtin_path(
     isolated_secret_dir,
 ) -> None:
+    """Test that built-in provider updates are persisted.
+
+    Note: freeze_url restriction was removed, so base_url can be updated.
+    """
     manager = ProviderManager()
 
     ok = manager.update_provider(
         "openai",
         {
-            "base_url": "https://updated.example/v1",  # not taken effect
+            "base_url": "https://updated.example/v1",  # now takes effect
             "api_key": "sk-updated",
         },
     )
@@ -263,7 +267,8 @@ def test_update_provider_for_builtin_persists_to_builtin_path(
     persisted = manager.load_provider("openai", is_builtin=True)
     assert persisted is not None
     assert isinstance(persisted, OpenAIProvider)
-    assert persisted.base_url == "https://api.openai.com/v1"
+    # base_url can now be updated (freeze_url restriction removed)
+    assert persisted.base_url == "https://updated.example/v1"
     assert persisted.api_key == "sk-updated"
 
     ok = manager.update_provider(
@@ -383,23 +388,30 @@ def test_provider_from_data_fallback_to_openai(isolated_secret_dir) -> None:
     assert isinstance(provider, OpenAIProvider)
 
 
-def test_init_from_storage_migrates_with_different_provider(
+def test_init_from_storage_preserves_user_config(
     isolated_secret_dir,
 ) -> None:
+    """Test that stored provider config is preserved on load.
+
+    Note: freeze_url restriction was removed, so user config takes precedence.
+    User's base_url and other settings are preserved even if they differ from
+    the built-in defaults.
+    """
     builtin_path = isolated_secret_dir / "providers" / "builtin"
     builtin_path.mkdir(parents=True, exist_ok=True)
 
-    legacy_minimax_provider = {
+    # User has custom config for minimax with different base_url
+    custom_minimax_provider = {
         "id": "minimax",
         "name": "MiniMax",
-        "base_url": "https://api.minimax.io/v1",
-        "api_key": "sk-legacy-minimax",
+        "base_url": "https://api.minimax.io/v1",  # User's custom URL
+        "api_key": "sk-custom-minimax",
         "chat_model": "OpenAIChatModel",
         "models": [{"id": "MiniMax-M2.5", "name": "MiniMax M2.5"}],
         "generate_kwargs": {"temperature": 1.0},
     }
     (builtin_path / "minimax.json").write_text(
-        json.dumps(legacy_minimax_provider, ensure_ascii=False, indent=2),
+        json.dumps(custom_minimax_provider, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
 
@@ -409,17 +421,16 @@ def test_init_from_storage_migrates_with_different_provider(
 
     assert provider is not None
     assert isinstance(provider, AnthropicProvider)
-    # url / name / chatmodel should be updated
-    assert provider.base_url == "https://api.minimax.io/anthropic"
+    # User's config is preserved (freeze_url restriction removed)
+    assert provider.base_url == "https://api.minimax.io/v1"
     assert provider.chat_model == "AnthropicChatModel"
-    assert provider.name == "MiniMax (International)"
-    # api key should be preserved
-    assert provider.api_key == "sk-legacy-minimax"
+    assert provider.api_key == "sk-custom-minimax"
 
     from agentscope.model import AnthropicChatModel
 
     assert provider.get_chat_model_cls() == AnthropicChatModel
 
+    # Ollama case - user's custom URL is also preserved
     legacy_ollama_provider = {
         "id": "ollama",
         "name": "Ollama New",

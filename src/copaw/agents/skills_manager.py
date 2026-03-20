@@ -449,13 +449,18 @@ def _read_skills_from_dir(
             if scripts_dir.exists() and scripts_dir.is_dir():
                 scripts = _build_directory_tree(scripts_dir)
 
+            # Always use absolute path for skill directory
+            # to ensure scripts can be executed correctly regardless of
+            # whether the input directory is relative or absolute
+            abs_skill_dir = skill_dir.resolve()
+
             skills.append(
                 SkillInfo(
                     name=skill_dir.name,
                     description=description,
                     content=content,
                     source=source,
-                    path=str(skill_dir),
+                    path=str(abs_skill_dir),
                     references=references,
                     scripts=scripts,
                 ),

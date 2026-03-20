@@ -274,7 +274,6 @@ export function ProviderConfigModal({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [form] = Form.useForm<ProviderConfigFormValues>();
   const selectedChatModel = Form.useWatch("chat_model", form);
-  const canEditBaseUrl = !provider.freeze_url;
 
   const parseGenerateConfig = (value?: string) => {
     const trimmed = value?.trim();
@@ -314,9 +313,6 @@ export function ProviderConfigModal({
   }, [provider.api_key, provider.api_key_prefix, t]);
 
   const baseUrlExtra = useMemo(() => {
-    if (!canEditBaseUrl) {
-      return undefined;
-    }
     if (provider.id === "azure-openai") {
       return t("models.azureEndpointHint");
     }
@@ -338,12 +334,9 @@ export function ProviderConfigModal({
         : t("models.openAICompatibleEndpoint");
     }
     return t("models.apiEndpointHint");
-  }, [canEditBaseUrl, provider.id, provider.is_custom, effectiveChatModel, t]);
+  }, [provider.id, provider.is_custom, effectiveChatModel, t]);
 
   const baseUrlPlaceholder = useMemo(() => {
-    if (!canEditBaseUrl) {
-      return "";
-    }
     if (provider.id === "azure-openai") {
       return "https://<resource>.openai.azure.com/openai/v1";
     }
@@ -363,7 +356,7 @@ export function ProviderConfigModal({
       return "https://api.anthropic.com";
     }
     return "https://api.example.com";
-  }, [canEditBaseUrl, provider.id, provider.is_custom, effectiveChatModel]);
+  }, [provider.id, provider.is_custom, effectiveChatModel]);
 
   // Sync form when modal opens or provider data changes
   useEffect(() => {
@@ -581,67 +574,35 @@ export function ProviderConfigModal({
         <Form.Item
           name="base_url"
           label={t("models.baseURL")}
-          rules={
-            canEditBaseUrl
-              ? [
-                  ...(!provider.freeze_url
-                    ? [
-                        {
-                          required: true,
-                          message: t("models.pleaseEnterBaseURL"),
-                        },
-                      ]
-                    : []),
-                  {
-                    validator: (_: unknown, value: string) => {
-                      if (!value || !value.trim()) return Promise.resolve();
-                      try {
-                        const url = new URL(value.trim());
-                        if (!["http:", "https:"].includes(url.protocol)) {
-                          return Promise.reject(
-                            new Error(t("models.pleaseEnterValidURL")),
-                          );
-                        }
-                        return Promise.resolve();
-                      } catch {
-                        return Promise.reject(
-                          new Error(t("models.pleaseEnterValidURL")),
-                        );
-                      }
-                    },
-                  },
-                ]
-              : []
-          }
+          rules={[
+            {
+              validator: (_: unknown, value: string) => {
+                if (!value || !value.trim()) return Promise.resolve();
+                try {
+                  const url = new URL(value.trim());
+                  if (!["http:", "https:"].includes(url.protocol)) {
+                    return Promise.reject(
+                      new Error(t("models.pleaseEnterValidURL")),
+                    );
+                  }
+                  return Promise.resolve();
+                } catch {
+                  return Promise.reject(
+                    new Error(t("models.pleaseEnterValidURL")),
+                  );
+                }
+              },
+            },
+          ]}
           extra={baseUrlExtra}
         >
-          <Input placeholder={baseUrlPlaceholder} disabled={!canEditBaseUrl} />
+          <Input placeholder={baseUrlPlaceholder} />
         </Form.Item>
 
         {/* API Key */}
         <Form.Item
           name="api_key"
           label={t("models.apiKey")}
-          rules={[
-            {
-              validator: (_, value) => {
-                if (
-                  value &&
-                  provider.api_key_prefix &&
-                  !value.startsWith(provider.api_key_prefix)
-                ) {
-                  return Promise.reject(
-                    new Error(
-                      t("models.apiKeyShouldStart", {
-                        prefix: provider.api_key_prefix,
-                      }),
-                    ),
-                  );
-                }
-                return Promise.resolve();
-              },
-            },
-          ]}
         >
           <Input.Password placeholder={apiKeyPlaceholder} />
         </Form.Item>

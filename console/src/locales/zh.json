@@ -785,6 +785,15 @@
         "warnDescription": "发现安全问题，但技能仍已启用（仅提醒模式）：",
         "goToWhitelist": "前往白名单"
       }
+    },
+    "workspaceRestriction": {
+      "title": "工作区限制",
+      "description": "限制智能体只能访问自己工作区目录内的文件。启用后，访问工作区外的文件需要管理员授权。",
+      "enabled": "启用工作区限制",
+      "enabledTooltip": "启用后，智能体的文件操作工具只能访问其工作区目录内的文件",
+      "allowPatterns": "允许的路径模式",
+      "allowPatternsTooltip": "每行一个 glob 模式，匹配的路径可以访问。例如：/tmp/* 允许访问临时目录",
+      "allowPatternsPlaceholder": "/tmp/*\n/var/log/*\nD:/Shared/*"
     }
   },
   "login": {

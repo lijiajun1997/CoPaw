@@ -438,6 +438,22 @@ class ChannelManager:
                 self._queues[new_channel_name] = asyncio.Queue(
                     maxsize=_CHANNEL_QUEUE_MAXSIZE,
                 )
+        # Always ensure consumer tasks are running for the queue
+        if getattr(new_channel, "uses_manager_queue", True):
+            # Check if consumer tasks are still running for this channel
+            running_count = sum(
+                1
+                for t in self._consumer_tasks
+                if not t.done()
+                and t.get_name().startswith(f"channel_consumer_{new_channel_name}_")
+            )
+            if running_count < _CONSUMER_WORKERS_PER_CHANNEL:
+                logger.info(
+                    "replace_channel: starting %d consumer(s) for %s (had %d running)",
+                    _CONSUMER_WORKERS_PER_CHANNEL - running_count,
+                    new_channel_name,
+                    running_count,
+                )
                 for w in range(_CONSUMER_WORKERS_PER_CHANNEL):
                     task = asyncio.create_task(
                         self._consume_channel_loop(new_channel_name, w),
