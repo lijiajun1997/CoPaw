@@ -20,11 +20,16 @@ export interface ToolGuardConfig {
   disabled_rules: string[];
 }
 
-// ── Workspace Restriction types ─────────────────────────────────────
+// ── File Guard types ──────────────────────────────────────────────
 
-export interface WorkspaceRestrictionConfig {
+export interface FileGuardResponse {
   enabled: boolean;
-  allow_patterns: string[];
+  paths: string[];
+}
+
+export interface FileGuardUpdateBody {
+  enabled?: boolean;
+  paths?: string[];
 }
 
 // ── Skill Scanner types ────────────────────────────────────────────
@@ -83,6 +88,16 @@ export const securityApi = {
   getBuiltinRules: () =>
     request<ToolGuardRule[]>("/config/security/tool-guard/builtin-rules"),
 
+  // ── File Guard ─────────────────────────────────────────────────
+
+  getFileGuard: () => request<FileGuardResponse>("/config/security/file-guard"),
+
+  updateFileGuard: (body: FileGuardUpdateBody) =>
+    request<FileGuardResponse>("/config/security/file-guard", {
+      method: "PUT",
+      body: JSON.stringify(body),
+    }),
+
   // ── Skill Scanner ───────────────────────────────────────────────
 
   getSkillScanner: () =>
@@ -129,21 +144,5 @@ export const securityApi = {
         skillName,
       )}`,
       { method: "DELETE" },
-    ),
-
-  // ── Workspace Restriction ────────────────────────────────────────
-
-  getWorkspaceRestriction: () =>
-    request<WorkspaceRestrictionConfig>(
-      "/config/security/workspace-restriction",
-    ),
-
-  updateWorkspaceRestriction: (body: WorkspaceRestrictionConfig) =>
-    request<WorkspaceRestrictionConfig>(
-      "/config/security/workspace-restriction",
-      {
-        method: "PUT",
-        body: JSON.stringify(body),
-      },
     ),
 };
