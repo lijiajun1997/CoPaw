@@ -38,6 +38,9 @@ _CHANNEL_QUEUE_MAXSIZE = 1000
 # Workers per channel: drain same-session from queue and process in parallel
 _CONSUMER_WORKERS_PER_CHANNEL = 4
 
+# Default session timeout in seconds (10 minutes)
+_SESSION_TIMEOUT_SECONDS = 600
+
 
 def _drain_same_key(
     q: asyncio.Queue,
@@ -131,6 +134,10 @@ class ChannelManager:
         # [image1, text] are not split across workers (avoids no-text
         # debounce reordering and duplicate content in AgentRequest).
         self._key_locks: Dict[Tuple[str, str], asyncio.Lock] = {}
+        # Track session start times for timeout monitoring
+        self._session_start_times: Dict[Tuple[str, str], float] = {}
+        # Background timeout monitor task
+        self._timeout_monitor_task: Optional[asyncio.Task[None]] = None
 
     @classmethod
     def from_env(
@@ -329,7 +336,12 @@ class ChannelManager:
         mark session in progress, merge batch (native or requests), process
         once, then flush any pending for this session (merged) back to queue.
         Multiple workers per channel allow different sessions in parallel.
+
+        Includes timeout protection: sessions that exceed _SESSION_TIMEOUT_SECONDS
+        will be cancelled to prevent indefinite blocking.
         """
+        import time
+
         q = self._queues.get(channel_id)
         if not q:
             return
@@ -340,17 +352,68 @@ class ChannelManager:
                 if not ch:
                     continue
                 key = ch.get_debounce_key(payload)
+
+                # Check if this session is already being processed
+                # If so, add to pending instead of waiting for lock
+                if (channel_id, key) in self._in_progress:
+                    self._pending.setdefault((channel_id, key), []).append(payload)
+                    continue
+
                 key_lock = self._key_locks.setdefault(
                     (channel_id, key),
                     asyncio.Lock(),
                 )
+
+                # Non-blocking check: if lock is held, add to pending
+                if key_lock.locked():
+                    self._pending.setdefault((channel_id, key), []).append(payload)
+                    continue
+
                 async with key_lock:
                     self._in_progress.add((channel_id, key))
+                    self._session_start_times[(channel_id, key)] = time.time()
                     batch = _drain_same_key(q, ch, key, payload)
+
                 try:
-                    await _process_batch(ch, batch)
+                    # Wrap processing with timeout to prevent stuck sessions
+                    await asyncio.wait_for(
+                        _process_batch(ch, batch),
+                        timeout=_SESSION_TIMEOUT_SECONDS,
+                    )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        "Session %s timed out after %s seconds, cancelling",
+                        key,
+                        _SESSION_TIMEOUT_SECONDS,
+                    )
+                    # Send timeout notification to user if channel supports it
+                    try:
+                        if hasattr(ch, "send_text") and batch:
+                            # Extract user info from batch if available
+                            first = batch[0] if isinstance(batch[0], dict) else {}
+                            user_id = first.get("senderId", "") or first.get("user_id", "")
+                            session_id = first.get("conversationId", "") or first.get("session_id", "")
+                            if user_id and session_id:
+                                await ch.send_text(
+                                    to_handle=ch.to_handle_from_target(
+                                        user_id=user_id,
+                                        session_id=session_id,
+                                    ) if hasattr(ch, "to_handle_from_target") else "",
+                                    text=(
+                                        f"⏰ 会话处理超时（{_SESSION_TIMEOUT_SECONDS // 60} 分钟），已自动取消。\n"
+                                        f"请重新发送您的消息。\n\n"
+                                        f"Session timed out after {_SESSION_TIMEOUT_SECONDS // 60} minutes. "
+                                        f"Please resend your message."
+                                    ),
+                                )
+                    except Exception as notify_err:
+                        logger.warning(
+                            "Failed to send timeout notification: %s",
+                            notify_err,
+                        )
                 finally:
                     self._in_progress.discard((channel_id, key))
+                    self._session_start_times.pop((channel_id, key), None)
                     pending = self._pending.pop((channel_id, key), [])
                     _put_pending_merged(ch, q, pending)
             except asyncio.CancelledError:
@@ -361,6 +424,46 @@ class ChannelManager:
                     channel_id,
                     worker_index,
                 )
+
+    async def _timeout_monitor_loop(self) -> None:
+        """Periodically check for and log stuck sessions.
+
+        This provides early warning of sessions approaching timeout,
+        complementing the per-request timeout in _consume_channel_loop.
+        """
+        import time
+
+        # Check every minute
+        check_interval = 60.0
+        # Warn when session is approaching timeout (80% of timeout)
+        warning_threshold = _SESSION_TIMEOUT_SECONDS * 0.8
+
+        while True:
+            try:
+                await asyncio.sleep(check_interval)
+
+                current_time = time.time()
+                stuck_sessions = []
+
+                for key, start_time in list(self._session_start_times.items()):
+                    elapsed = current_time - start_time
+                    if elapsed > warning_threshold:
+                        stuck_sessions.append((key, elapsed))
+
+                if stuck_sessions:
+                    for key, elapsed in stuck_sessions:
+                        logger.warning(
+                            "Session %s has been running for %.1f seconds "
+                            "(timeout at %s seconds)",
+                            key,
+                            elapsed,
+                            _SESSION_TIMEOUT_SECONDS,
+                        )
+
+            except asyncio.CancelledError:
+                break
+            except Exception:
+                logger.exception("Error in timeout monitor loop")
 
     async def start_all(self) -> None:
         self._loop = asyncio.get_running_loop()
@@ -380,6 +483,14 @@ class ChannelManager:
                         name=f"channel_consumer_{ch.channel}_{w}",
                     )
                     self._consumer_tasks.append(task)
+
+        # Start timeout monitor task
+        self._timeout_monitor_task = asyncio.create_task(
+            self._timeout_monitor_loop(),
+            name="channel_timeout_monitor",
+        )
+        self._consumer_tasks.append(self._timeout_monitor_task)
+
         logger.debug(
             "starting channels=%s queues=%s",
             [g.channel for g in snapshot],
@@ -394,6 +505,7 @@ class ChannelManager:
     async def stop_all(self) -> None:
         self._in_progress.clear()
         self._pending.clear()
+        self._session_start_times.clear()
         for task in self._consumer_tasks:
             task.cancel()
         if self._consumer_tasks:
@@ -408,6 +520,7 @@ class ChannelManager:
                     len(pending),
                 )
         self._consumer_tasks.clear()
+        self._timeout_monitor_task = None
         self._queues.clear()
         async with self._lock:
             snapshot = list(self.channels)
