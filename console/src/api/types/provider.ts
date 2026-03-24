@@ -40,6 +40,8 @@ export interface ProviderConfigRequest {
 export interface ModelSlotConfig {
   provider_id: string;
   model: string;
+  fallback_models?: ModelSlotConfig[];
+  max_retries?: number;
 }
 
 export interface ActiveModelsInfo {

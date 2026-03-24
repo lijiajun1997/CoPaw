@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import api, { type WorkspaceRestrictionConfig } from "../../../api";
+import api from "../../../api";
+import type { WorkspaceRestrictionConfig } from "../../../api/modules/security";
 
 const DEFAULT_CONFIG: WorkspaceRestrictionConfig = {
   enabled: false,
@@ -7,7 +8,8 @@ const DEFAULT_CONFIG: WorkspaceRestrictionConfig = {
 };
 
 export function useWorkspaceRestriction() {
-  const [config, setConfig] = useState<WorkspaceRestrictionConfig>(DEFAULT_CONFIG);
+  const [config, setConfig] =
+    useState<WorkspaceRestrictionConfig>(DEFAULT_CONFIG);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,22 +21,27 @@ export function useWorkspaceRestriction() {
       setConfig(data);
     } catch (err) {
       const errMsg =
-        err instanceof Error ? err.message : "Failed to load workspace restriction config";
+        err instanceof Error
+          ? err.message
+          : "Failed to load workspace restriction config";
       setError(errMsg);
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const updateConfig = useCallback(async (newConfig: WorkspaceRestrictionConfig) => {
-    try {
-      const data = await api.updateWorkspaceRestriction(newConfig);
-      setConfig(data);
-      return true;
-    } catch (err) {
-      throw err;
-    }
-  }, []);
+  const updateConfig = useCallback(
+    async (newConfig: WorkspaceRestrictionConfig) => {
+      try {
+        const data = await api.updateWorkspaceRestriction(newConfig);
+        setConfig(data);
+        return true;
+      } catch (err) {
+        throw err;
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     fetchConfig();

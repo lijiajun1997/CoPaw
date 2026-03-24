@@ -600,10 +600,7 @@ export function ProviderConfigModal({
         </Form.Item>
 
         {/* API Key */}
-        <Form.Item
-          name="api_key"
-          label={t("models.apiKey")}
-        >
+        <Form.Item name="api_key" label={t("models.apiKey")}>
           <Input.Password placeholder={apiKeyPlaceholder} />
         </Form.Item>
 

@@ -219,7 +219,7 @@ class TestEnvContextEdgeCases:
         # Should still have valid output
         assert "====================" in ctx
         assert "OS:" in ctx
-        assert "Current time:" in ctx
+        assert "Current date:" in ctx
 
     def test_env_context_with_empty_strings(self) -> None:
         """Test env context with empty strings."""

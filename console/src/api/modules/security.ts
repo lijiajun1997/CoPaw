@@ -74,6 +74,13 @@ export interface SecurityScanErrorResponse {
   findings: BlockedSkillFinding[];
 }
 
+// ── Workspace Restriction types ──────────────────────────────────────
+
+export interface WorkspaceRestrictionConfig {
+  enabled: boolean;
+  allow_patterns: string[];
+}
+
 export const securityApi = {
   // ── Tool Guard ──────────────────────────────────────────────────
 
@@ -144,5 +151,21 @@ export const securityApi = {
         skillName,
       )}`,
       { method: "DELETE" },
+    ),
+
+  // ── Workspace Restriction ───────────────────────────────────────
+
+  getWorkspaceRestriction: () =>
+    request<WorkspaceRestrictionConfig>(
+      "/config/security/workspace-restriction",
+    ),
+
+  updateWorkspaceRestriction: (body: WorkspaceRestrictionConfig) =>
+    request<WorkspaceRestrictionConfig>(
+      "/config/security/workspace-restriction",
+      {
+        method: "PUT",
+        body: JSON.stringify(body),
+      },
     ),
 };

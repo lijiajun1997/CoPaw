@@ -1,14 +1,5 @@
 import { useState, useEffect } from "react";
-import {
-  Card,
-  Select,
-  Button,
-  InputNumber,
-  Space,
-  Divider,
-  message,
-  Spin,
-} from "antd";
+import { Card, Select, Button, InputNumber, Space, Divider, Spin } from "antd";
 import { PlusOutlined, DeleteOutlined } from "@ant-design/icons";
 import { useTranslation } from "react-i18next";
 import { providerApi } from "../../../../api/modules/provider";
@@ -73,10 +64,12 @@ export function ModelConfigCard({
   // Get model options for a provider
   const getModelOptions = (providerId: string) => {
     const provider = eligibleProviders.find((p) => p.id === providerId);
-    return provider?.models.map((m) => ({
-      label: m.name || m.id,
-      value: m.id,
-    })) || [];
+    return (
+      provider?.models.map((m) => ({
+        label: m.name || m.id,
+        value: m.id,
+      })) || []
+    );
   };
 
   // Update a specific model slot (primary or fallback)
@@ -87,17 +80,32 @@ export function ModelConfigCard({
   ) => {
     if (index === 0) {
       // Updating primary model
-      const current = value || { provider_id: "", model: "", fallback_models: [], max_retries: 3 };
+      const current = value || {
+        provider_id: "",
+        model: "",
+        fallback_models: [],
+        max_retries: 3,
+      };
       onChange?.({
         ...current,
         [field]: fieldValue,
       });
     } else {
       // Updating fallback model
-      const current = value || { provider_id: "", model: "", fallback_models: [], max_retries: 3 };
+      const current = value || {
+        provider_id: "",
+        model: "",
+        fallback_models: [],
+        max_retries: 3,
+      };
       const fallbacks = [...(current.fallback_models || [])];
       if (!fallbacks[index - 1]) {
-        fallbacks[index - 1] = { provider_id: "", model: "", fallback_models: [], max_retries: 3 };
+        fallbacks[index - 1] = {
+          provider_id: "",
+          model: "",
+          fallback_models: [],
+          max_retries: 3,
+        };
       }
       fallbacks[index - 1] = {
         ...fallbacks[index - 1],
@@ -126,14 +134,23 @@ export function ModelConfigCard({
   const addFallback = () => {
     const current = value;
     const fallbacks = [...(current?.fallback_models || [])];
-    fallbacks.push({ provider_id: "", model: "", fallback_models: [], max_retries: 3 });
+    fallbacks.push({
+      provider_id: "",
+      model: "",
+      fallback_models: [],
+      max_retries: 3,
+    });
     onChange?.({
       ...current,
       fallback_models: fallbacks,
     });
   };
 
-  const renderModelSlot = (index: number, slot: ModelSlotConfig, isPrimary: boolean) => {
+  const renderModelSlot = (
+    index: number,
+    slot: ModelSlotConfig,
+    isPrimary: boolean,
+  ) => {
     const providerId = slot.provider_id;
     const modelId = slot.model;
     const maxRetries = slot.max_retries ?? 3;
@@ -142,7 +159,9 @@ export function ModelConfigCard({
       <div key={index} className={styles.modelSlot}>
         <div className={styles.modelSlotHeader}>
           <span className={styles.modelSlotTitle}>
-            {isPrimary ? t("agentConfig.primaryModel") : `${t("agentConfig.fallbackModel")} ${index}`}
+            {isPrimary
+              ? t("agentConfig.primaryModel")
+              : `${t("agentConfig.fallbackModel")} ${index}`}
           </span>
           {!isPrimary && (
             <Button
@@ -158,7 +177,9 @@ export function ModelConfigCard({
         <Space direction="vertical" style={{ width: "100%" }} size="small">
           <div className={styles.modelSelectorRow}>
             <div className={styles.modelSelectorCol}>
-              <span className={styles.selectorLabel}>{t("agentConfig.provider")}</span>
+              <span className={styles.selectorLabel}>
+                {t("agentConfig.provider")}
+              </span>
               <Select
                 value={providerId || undefined}
                 placeholder={t("agentConfig.selectProvider")}
@@ -173,7 +194,9 @@ export function ModelConfigCard({
             </div>
 
             <div className={styles.modelSelectorCol}>
-              <span className={styles.selectorLabel}>{t("agentConfig.model")}</span>
+              <span className={styles.selectorLabel}>
+                {t("agentConfig.model")}
+              </span>
               <Select
                 value={modelId || undefined}
                 placeholder={t("agentConfig.selectModel")}
@@ -186,12 +209,16 @@ export function ModelConfigCard({
           </div>
 
           <div className={styles.retryConfig}>
-            <span className={styles.selectorLabel}>{t("agentConfig.maxRetries")}</span>
+            <span className={styles.selectorLabel}>
+              {t("agentConfig.maxRetries")}
+            </span>
             <InputNumber
               value={maxRetries}
               min={0}
               max={10}
-              onChange={(val) => updateModelSlot(index, "max_retries", val ?? 3)}
+              onChange={(val) =>
+                updateModelSlot(index, "max_retries", val ?? 3)
+              }
               style={{ width: 120 }}
             />
           </div>
@@ -210,7 +237,12 @@ export function ModelConfigCard({
     );
   }
 
-  const current = value || { provider_id: "", model: "", fallback_models: [], max_retries: 3 };
+  const current = value || {
+    provider_id: "",
+    model: "",
+    fallback_models: [],
+    max_retries: 3,
+  };
   const fallbacks = current.fallback_models || [];
 
   return (
@@ -224,7 +256,9 @@ export function ModelConfigCard({
         {fallbacks.map((fallback, idx) => (
           <div key={idx}>
             {renderModelSlot(idx + 1, fallback, false)}
-            {idx < fallbacks.length - 1 && <Divider style={{ margin: "8px 0" }} />}
+            {idx < fallbacks.length - 1 && (
+              <Divider style={{ margin: "8px 0" }} />
+            )}
           </div>
         ))}
 
