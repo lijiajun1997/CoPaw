@@ -132,8 +132,13 @@ export function ModelConfigCard({
 
   // Add a new fallback model
   const addFallback = () => {
-    const current = value;
-    const fallbacks = [...(current?.fallback_models || [])];
+    const current = value || {
+      provider_id: "",
+      model: "",
+      fallback_models: [],
+      max_retries: 3,
+    };
+    const fallbacks = [...(current.fallback_models || [])];
     fallbacks.push({
       provider_id: "",
       model: "",
