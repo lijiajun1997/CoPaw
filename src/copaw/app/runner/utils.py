@@ -81,7 +81,7 @@ def build_env_context(
         parts.append(f"- Users root: {users_root}")
 
     parts.append(
-        f"- Current time: {now.strftime('%Y-%m-%d %H:%M:%S')} "
+        f"- Current date: {now.strftime('%Y-%m-%d')} "
         f"{user_tz} ({now.strftime('%A')})",
     )
 

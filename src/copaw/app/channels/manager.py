@@ -363,7 +363,6 @@ class ChannelManager:
                     (channel_id, key),
                     asyncio.Lock(),
                 )
-
                 # Non-blocking check: if lock is held, add to pending
                 if key_lock.locked():
                     self._pending.setdefault((channel_id, key), []).append(payload)
