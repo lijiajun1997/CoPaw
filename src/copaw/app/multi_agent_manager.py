@@ -3,6 +3,10 @@
 
 Provides centralized management for multiple Workspace objects,
 including lazy loading, lifecycle management, and hot reloading.
+
+Supports two multi-user modes:
+- MULTI_AGENT: Each user has their own Agent instance (default)
+- SHARED_AGENT: All users share one Agent with isolated file spaces
 """
 import asyncio
 import json
@@ -11,10 +15,15 @@ import re
 import shutil
 import tempfile
 from pathlib import Path
-from typing import Dict, Optional, Set
+from typing import Dict, Optional, Set, TYPE_CHECKING
 
 from .workspace import Workspace
+from .shared_workspace_manager import SharedWorkspaceManager
 from ..config.utils import load_config, get_config_path
+from ..config.config import MultiUserMode
+
+if TYPE_CHECKING:
+    from ..config.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +87,7 @@ class MultiAgentManager:
     - Lifecycle management: Start, stop, reload workspaces
     - Thread-safe: Uses async lock for concurrent access
     - Hot reload: Reload individual workspaces without affecting others
+    - Dual mode support: MULTI_AGENT or SHARED_AGENT
     """
 
     def __init__(self):
@@ -85,27 +95,99 @@ class MultiAgentManager:
         self.agents: Dict[str, Workspace] = {}
         self._lock = asyncio.Lock()
         self._cleanup_tasks: Set[asyncio.Task] = set()
+        self._shared_workspace_manager: Optional[SharedWorkspaceManager] = None
         logger.debug("MultiAgentManager initialized")
 
     async def get_agent(
         self,
         agent_id: str,
         display_name: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Workspace:
         """Get agent workspace by ID (lazy loading).
 
         If workspace doesn't exist in memory, it will be created and started.
         Thread-safe using async lock.
 
+        In MULTI_AGENT mode: Each user gets their own workspace.
+        In SHARED_AGENT mode: All users share one workspace with isolated file spaces.
+
         Args:
             agent_id: Agent ID to retrieve
             display_name: Optional display name for the agent (used when creating new agent)
+            user_id: Optional user ID for shared mode (to ensure user space exists)
 
         Returns:
             Workspace: The requested workspace instance
 
         Raises:
             ValueError: If agent ID not found in configuration
+        """
+        config = load_config()
+
+        # SHARED_AGENT mode: Return shared workspace
+        if config.multi_user_mode == MultiUserMode.SHARED_AGENT:
+            return await self._get_shared_workspace(config, user_id)
+
+        # MULTI_AGENT mode: Each user has their own workspace
+        return await self._get_multi_agent_workspace(agent_id, display_name)
+
+    async def _get_shared_workspace(
+        self,
+        config: "Config",
+        user_id: Optional[str] = None,
+    ) -> Workspace:
+        """Get shared workspace for SHARED_AGENT mode.
+
+        Args:
+            config: Current configuration
+            user_id: Optional user ID to ensure user space exists
+
+        Returns:
+            Workspace: The shared workspace instance
+        """
+        async with self._lock:
+            # Initialize shared workspace manager if needed
+            if self._shared_workspace_manager is None:
+                if "shared" not in config.agents.profiles:
+                    # Create shared workspace configuration
+                    await self._ensure_shared_agent_exists(config)
+                    config = load_config()
+
+                shared_ref = config.agents.profiles.get("shared")
+                if not shared_ref:
+                    raise ValueError(
+                        "Shared workspace not found in configuration. "
+                        "Please create 'shared' agent profile."
+                    )
+
+                self._shared_workspace_manager = SharedWorkspaceManager(
+                    workspace_dir=Path(shared_ref.workspace_dir)
+                )
+
+            # Get or create the shared workspace
+            workspace = await self._shared_workspace_manager.get_or_create_workspace()
+
+            # Ensure user space exists if user_id provided
+            if user_id:
+                self._shared_workspace_manager.ensure_user_space(user_id)
+                logger.debug(f"Ensured user space for: {user_id}")
+
+            return workspace
+
+    async def _get_multi_agent_workspace(
+        self,
+        agent_id: str,
+        display_name: Optional[str] = None,
+    ) -> Workspace:
+        """Get per-user workspace for MULTI_AGENT mode.
+
+        Args:
+            agent_id: Agent ID to retrieve
+            display_name: Optional display name for the agent
+
+        Returns:
+            Workspace: The requested workspace instance
         """
         # Sanitize agent_id for multi-user support
         safe_agent_id = _sanitize_agent_id(agent_id) if agent_id else "default"
@@ -153,6 +235,140 @@ class MultiAgentManager:
             except Exception as e:
                 logger.error(f"Failed to start workspace {safe_agent_id}: {e}")
                 raise
+
+    async def _ensure_shared_agent_exists(self, config: "Config") -> None:
+        """Ensure shared agent workspace exists in configuration.
+
+        Creates the shared workspace directory and configuration if needed.
+
+        Args:
+            config: Current configuration
+        """
+        from ..config.utils import WORKING_DIR
+
+        working_dir = Path(WORKING_DIR)
+        shared_workspace_dir = working_dir / "workspaces" / "shared"
+
+        # Check if already exists
+        if "shared" in config.agents.profiles:
+            logger.debug("Shared workspace already in config")
+            return
+
+        logger.info("Creating shared workspace configuration...")
+
+        # Create directory if needed
+        shared_workspace_dir.mkdir(parents=True, exist_ok=True)
+
+        # Copy from default if exists, otherwise create minimal
+        default_dir = working_dir / "workspaces" / "default"
+        if default_dir.exists():
+            # Create agent.json based on default
+            self._create_shared_agent_config(
+                shared_workspace_dir, default_dir
+            )
+        else:
+            self._create_minimal_agent_config(
+                shared_workspace_dir, "shared", "Shared Agent"
+            )
+
+        # Add to root config
+        self._add_agent_to_config("shared", str(shared_workspace_dir), "Shared Agent")
+
+        logger.info(f"Shared workspace created at: {shared_workspace_dir}")
+
+    def _create_shared_agent_config(
+        self,
+        workspace_dir: Path,
+        default_dir: Path,
+    ) -> None:
+        """Create shared agent.json based on default workspace.
+
+        Args:
+            workspace_dir: Target workspace directory
+            default_dir: Default workspace directory to copy from
+        """
+        default_agent_json = default_dir / "agent.json"
+
+        if default_agent_json.exists():
+            try:
+                with open(default_agent_json, encoding="utf-8") as f:
+                    config = json.load(f)
+
+                config["id"] = "shared"
+                config["name"] = "Shared Agent"
+                config["workspace_dir"] = str(workspace_dir)
+
+                agent_json_path = workspace_dir / "agent.json"
+                with open(agent_json_path, "w", encoding="utf-8") as f:
+                    json.dump(config, f, indent=2, ensure_ascii=False)
+
+                logger.debug("Created shared agent.json from default")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to copy default config: {e}")
+
+        # Fallback to minimal config
+        self._create_minimal_agent_config(workspace_dir, "shared", "Shared Agent")
+
+    def get_shared_workspace_manager(self) -> Optional[SharedWorkspaceManager]:
+        """Get the SharedWorkspaceManager instance.
+
+        Returns:
+            SharedWorkspaceManager or None if not in shared mode
+        """
+        return self._shared_workspace_manager
+
+    def get_user_space_dir(self, user_id: str) -> Optional[Path]:
+        """Get user's file space directory (shared mode only).
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Path to user's space directory, or None if not in shared mode
+        """
+        if self._shared_workspace_manager:
+            return self._shared_workspace_manager.get_user_space_dir(user_id)
+        return None
+
+    def get_user_files_dir(self, user_id: str) -> Optional[Path]:
+        """Get user's files directory for uploads (shared mode only).
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Path to user's files directory, or None if not in shared mode
+        """
+        if self._shared_workspace_manager:
+            return self._shared_workspace_manager.get_user_files_dir(user_id)
+        return None
+
+    def get_user_tasks_dir(self, user_id: str) -> Optional[Path]:
+        """Get user's tasks directory for generated files (shared mode only).
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Path to user's tasks directory, or None if not in shared mode
+        """
+        if self._shared_workspace_manager:
+            return self._shared_workspace_manager.get_user_tasks_dir(user_id)
+        return None
+
+    def get_user_context(self, user_id: str) -> Optional[Dict[str, str]]:
+        """Get user context for prompt injection (shared mode only).
+
+        Args:
+            user_id: User identifier
+
+        Returns:
+            Dict with user paths, or None if not in shared mode
+        """
+        if self._shared_workspace_manager:
+            return self._shared_workspace_manager.get_user_context(user_id)
+        return None
 
     async def _ensure_user_agent_exists(
         self,
@@ -467,6 +683,15 @@ class MultiAgentManager:
             bool: True if agent was stopped, False if not running
         """
         async with self._lock:
+            # Handle shared workspace
+            if agent_id == "shared":
+                if self._shared_workspace_manager:
+                    await self._shared_workspace_manager.stop()
+                    logger.info("Shared workspace stopped")
+                    return True
+                logger.warning("Shared workspace not running")
+                return False
+
             if agent_id not in self.agents:
                 logger.warning(f"Agent not running: {agent_id}")
                 return False
@@ -638,6 +863,12 @@ class MultiAgentManager:
                 logger.error(f"Error stopping agent {agent_id}: {e}")
 
         self.agents.clear()
+
+        # Stop shared workspace if exists
+        if self._shared_workspace_manager:
+            await self._shared_workspace_manager.stop()
+            self._shared_workspace_manager = None
+
         logger.info("All agents stopped")
 
     def list_loaded_agents(self) -> list[str]:
@@ -646,7 +877,12 @@ class MultiAgentManager:
         Returns:
             list[str]: List of loaded agent IDs
         """
-        return list(self.agents.keys())
+        agents = list(self.agents.keys())
+        # Include shared workspace if active
+        if self._shared_workspace_manager and self._shared_workspace_manager.workspace:
+            if "shared" not in agents:
+                agents.append("shared")
+        return agents
 
     def is_agent_loaded(self, agent_id: str) -> bool:
         """Check if agent is currently loaded.
@@ -657,7 +893,12 @@ class MultiAgentManager:
         Returns:
             bool: True if agent is loaded and running
         """
-        return agent_id in self.agents
+        if agent_id in self.agents:
+            return True
+        # Check shared workspace
+        if agent_id == "shared" and self._shared_workspace_manager:
+            return self._shared_workspace_manager.workspace is not None
+        return False
 
     async def preload_agent(self, agent_id: str) -> bool:
         """Preload an agent instance during startup.

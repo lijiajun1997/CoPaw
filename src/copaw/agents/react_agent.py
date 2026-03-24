@@ -270,6 +270,23 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
             else None
         )
 
+        # Get user context for shared agent mode
+        user_id = (
+            self._request_context.get("user_id")
+            if self._request_context
+            else None
+        )
+        user_space_dir = (
+            self._request_context.get("user_space_dir")
+            if self._request_context
+            else None
+        )
+        users_root = (
+            self._request_context.get("users_root")
+            if self._request_context
+            else None
+        )
+
         # Check if heartbeat is enabled in agent config
         heartbeat_enabled = False
         if (
@@ -282,6 +299,9 @@ class CoPawAgent(ToolGuardMixin, ReActAgent):
             working_dir=self._workspace_dir,
             agent_id=agent_id,
             heartbeat_enabled=heartbeat_enabled,
+            user_id=user_id,
+            user_space_dir=user_space_dir,
+            users_root=users_root,
         )
         logger.debug("System prompt:\n%s", sys_prompt)
         if self._env_context is not None:

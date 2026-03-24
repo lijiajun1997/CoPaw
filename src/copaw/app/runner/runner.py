@@ -35,6 +35,7 @@ from ...security.tool_guard.approval import ApprovalDecision
 
 if TYPE_CHECKING:
     from ...agents.memory import MemoryManager
+    from ..multi_agent_manager import MultiAgentManager
 
 logger = logging.getLogger(__name__)
 
@@ -297,15 +298,34 @@ class AgentRunner(Runner):
                 ),
             )
 
+            # Get user space info for shared agent mode
+            user_space_dir = None
+            users_root = None
+            working_dir = (
+                str(self.workspace_dir)
+                if self.workspace_dir
+                else str(WORKING_DIR)
+            )
+
+            # Check if we're in shared mode and get user space
+            from ..multi_agent_manager import get_multi_agent_manager as _get_manager
+            manager = _get_manager()
+            if manager and user_id:
+                user_context = manager.get_user_context(user_id)
+                if user_context:
+                    user_space_dir = user_context.get("user_space")
+                    users_root = user_context.get("users_root")
+                    # In shared mode, working dir should be user space
+                    if user_space_dir:
+                        working_dir = user_space_dir
+
             env_context = build_env_context(
                 session_id=session_id,
                 user_id=user_id,
                 channel=channel,
-                working_dir=(
-                    str(self.workspace_dir)
-                    if self.workspace_dir
-                    else str(WORKING_DIR)
-                ),
+                working_dir=working_dir,
+                user_space_dir=user_space_dir,
+                users_root=users_root,
             )
 
             # Get MCP clients from manager (hot-reloadable)
@@ -326,6 +346,8 @@ class AgentRunner(Runner):
                     "user_id": user_id,
                     "channel": channel,
                     "agent_id": self.agent_id,
+                    "user_space_dir": user_space_dir,
+                    "users_root": users_root,
                     **(
                         {
                             "forced_tool_call_json": json.dumps(

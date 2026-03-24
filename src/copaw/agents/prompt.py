@@ -179,6 +179,9 @@ def build_system_prompt_from_working_dir(
     enabled_files: list[str] | None = None,
     agent_id: str | None = None,
     heartbeat_enabled: bool = False,
+    user_id: str | None = None,
+    user_space_dir: str | None = None,
+    users_root: str | None = None,
 ) -> str:
     """
     Build system prompt by reading markdown files from working directory.
@@ -204,6 +207,9 @@ def build_system_prompt_from_working_dir(
         agent_id: Agent identifier to include in system prompt (optional)
         heartbeat_enabled: Whether heartbeat is enabled. When False, filters
             heartbeat section from AGENTS.md to avoid confusing instructions.
+        user_id: Current user ID (for shared agent mode)
+        user_space_dir: User's file space directory (for shared agent mode)
+        users_root: Root directory containing all user spaces (for shared agent mode)
 
     Returns:
         str: Constructed system prompt from markdown files.
@@ -244,6 +250,28 @@ def build_system_prompt_from_working_dir(
         heartbeat_enabled=heartbeat_enabled,
     )
     prompt = builder.build()
+
+    # Add user isolation context for shared agent mode
+    if user_id and user_space_dir:
+        user_isolation_header = (
+            f"# Current User Context\n\n"
+            f"- **User ID**: `{user_id}`\n"
+            f"- **User Space**: `{user_space_dir}`\n"
+            f"- **Files Directory**: `{user_space_dir}/files/`\n"
+            f"- **Tasks Directory**: `{user_space_dir}/tasks/`\n\n"
+            f"## User Data Isolation Rules\n\n"
+            f"**IMPORTANT**: You are operating in a multi-user shared environment.\n\n"
+            f"1. **File Operations**: All files should be created in the user's space:\n"
+            f"   - User files go to: `{user_space_dir}/files/`\n"
+            f"   - User tasks go to: `{user_space_dir}/tasks/`\n\n"
+            f"2. **Privacy Protection**:\n"
+            f"   - You CAN see all user directories under `{users_root}`\n"
+            f"   - You MUST NOT share content between different users\n"
+            f"   - You MUST NOT send user A's files/data to user B\n\n"
+            f"3. **Task Generation**: When creating files for the user, always save to:\n"
+            f"   - `{user_space_dir}/tasks/` for generated task files\n\n"
+        )
+        prompt = user_isolation_header + prompt
 
     # Add agent identity information at the beginning of the prompt
     if agent_id:

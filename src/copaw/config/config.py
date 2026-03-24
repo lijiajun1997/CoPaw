@@ -2,6 +2,7 @@
 import os
 import json
 from pathlib import Path
+from enum import Enum
 from typing import Optional, Union, Dict, List, Literal
 
 from pydantic import BaseModel, Field, ConfigDict, model_validator
@@ -14,6 +15,17 @@ from ..constant import (
     WORKING_DIR,
 )
 from ..providers.models import ModelSlotConfig
+
+
+class MultiUserMode(str, Enum):
+    """Multi-user operation mode.
+
+    - MULTI_AGENT: Each user has their own Agent instance with complete isolation
+    - SHARED_AGENT: All users share one Agent, but have isolated file spaces
+    """
+
+    MULTI_AGENT = "multi_agent"
+    SHARED_AGENT = "shared_agent"
 
 
 def generate_short_agent_id() -> str:
@@ -850,6 +862,14 @@ class Config(BaseModel):
         default_factory=detect_system_timezone,
         description="User IANA timezone (e.g. Asia/Shanghai). "
         "Defaults to the system timezone.",
+    )
+    multi_user_mode: MultiUserMode = Field(
+        default=MultiUserMode.MULTI_AGENT,
+        description=(
+            "Multi-user operation mode. "
+            "'multi_agent': each user has their own Agent instance; "
+            "'shared_agent': all users share one Agent with isolated file spaces."
+        ),
     )
 
 

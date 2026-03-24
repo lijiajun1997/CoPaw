@@ -64,34 +64,65 @@ class DynamicMultiAgentRunner:
     async def _get_workspace_runner(self, request):
         """Get the correct workspace runner based on request."""
         from .agent_context import get_current_agent_id, _current_agent_id
+        from ..config.config import MultiUserMode
 
         # Get agent_id from context (set by middleware or header)
         agent_id = get_current_agent_id()
 
-        # Multi-user support: use user_id as agent_id if no explicit agent_id
-        # Check if context var was explicitly set (not just fallback to default)
+        # Get user_id from request for both modes
+        user_id = None
+        if hasattr(request, "user_id") and request.user_id:
+            user_id = request.user_id
+        elif hasattr(request, "state") and hasattr(request.state, "user_id"):
+            user_id = request.state.user_id
+
+        # Check multi-user mode from config
+        config = load_config()
+        is_shared_mode = config.multi_user_mode == MultiUserMode.SHARED_AGENT
+
+        if is_shared_mode:
+            # SHARED_AGENT mode: all users share one workspace
+            logger.debug(
+                "_get_workspace_runner: SHARED_AGENT mode, user_id=%s",
+                user_id,
+            )
+            if not self._multi_agent_manager:
+                raise RuntimeError("MultiAgentManager not initialized")
+
+            try:
+                # Pass user_id to ensure user space exists
+                workspace = await self._multi_agent_manager.get_agent(
+                    agent_id="shared",
+                    user_id=user_id,
+                )
+                logger.debug(
+                    "Got shared workspace for user: %s",
+                    user_id,
+                )
+                return workspace.runner
+            except ValueError as e:
+                logger.error(
+                    "Configuration error for shared workspace: %s",
+                    e,
+                )
+                raise
+            except Exception as e:
+                logger.error(
+                    "Error getting shared workspace runner: %s",
+                    e,
+                    exc_info=True,
+                )
+                raise
+
+        # MULTI_AGENT mode: check if context var was explicitly set
         context_agent_id = _current_agent_id.get()
-        logger.info(
-            f"_get_workspace_runner: initial agent_id={agent_id}, "
-            f"context_agent_id={context_agent_id}"
+        logger.debug(
+            "_get_workspace_runner: MULTI_AGENT mode, agent_id=%s, context_agent_id=%s",
+            agent_id,
+            context_agent_id,
         )
         if context_agent_id is None:
-            # No explicit agent_id set, try to use user_id from request
-            user_id = None
-
-            # Check if request has user_id attribute (from AgentRequest)
-            if hasattr(request, "user_id") and request.user_id:
-                user_id = request.user_id
-                logger.info(f"Found user_id in request attribute: {user_id}")
-            # Check request.state for user_id
-            elif hasattr(request, "state") and hasattr(request.state, "user_id"):
-                user_id = request.state.user_id
-                logger.info(f"Found user_id in request.state: {user_id}")
-            else:
-                logger.info(
-                    f"No user_id found. request attrs: {dir(request)[:10]}"
-                )
-
+            # No explicit agent_id set, try to use user_id as agent_id
             if user_id:
                 agent_id = user_id
                 logger.info(

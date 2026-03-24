@@ -33,6 +33,8 @@ def build_env_context(
     channel: Optional[str] = None,
     working_dir: Optional[str] = None,
     add_hint: bool = True,
+    user_space_dir: Optional[str] = None,
+    users_root: Optional[str] = None,
 ) -> str:
     """
     Build environment context with current request context prepended.
@@ -43,6 +45,8 @@ def build_env_context(
         channel: Current channel name
         working_dir: Working directory path
         add_hint: Whether to add hint context
+        user_space_dir: User's file space directory (for shared agent mode)
+        users_root: Root directory containing all user spaces (for shared agent mode)
     Returns:
         Formatted environment context string
     """
@@ -69,6 +73,13 @@ def build_env_context(
 
     if working_dir is not None:
         parts.append(f"- Working directory: {working_dir}")
+
+    # Add user space info for shared agent mode
+    if user_space_dir is not None:
+        parts.append(f"- User space: {user_space_dir}")
+    if users_root is not None:
+        parts.append(f"- Users root: {users_root}")
+
     parts.append(
         f"- Current time: {now.strftime('%Y-%m-%d %H:%M:%S')} "
         f"{user_tz} ({now.strftime('%A')})",
