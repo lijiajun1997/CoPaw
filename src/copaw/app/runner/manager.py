@@ -83,6 +83,7 @@ class ChatManager:
         user_id: str,
         channel: str = DEFAULT_CHANNEL,
         name: str = "New Chat",
+        meta: dict | None = None,
     ) -> ChatSpec:
         """Get existing chat or create new one.
 
@@ -93,6 +94,7 @@ class ChatManager:
             user_id: User identifier
             channel: Channel name
             name: Chat name
+            meta: Additional metadata (e.g., feishu_sender_name)
 
         Returns:
             Chat specification (existing or newly created)
@@ -110,6 +112,14 @@ class ChatManager:
                 channel,
             )
             if existing:
+                # 如果有新的 meta 数据，更新现有 chat
+                if meta:
+                    existing.meta.update(meta)
+                    existing.updated_at = datetime.now(timezone.utc)
+                    await self._repo.upsert_chat(existing)
+                    logger.debug(
+                        f"get_or_create_chat: Updated chat meta: {existing.id}"
+                    )
                 logger.debug(
                     f"get_or_create_chat: Found existing chat: {existing.id}",
                 )
@@ -125,6 +135,7 @@ class ChatManager:
                 user_id=user_id,
                 channel=channel,
                 name=name,
+                meta=meta or {},
             )
             logger.debug(f"get_or_create_chat: created spec={spec.id}")
             # Call internal create without lock (already locked)

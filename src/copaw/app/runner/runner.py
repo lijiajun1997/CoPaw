@@ -369,12 +369,45 @@ class AgentRunner(Runner):
             )
 
             name = "New Chat"
+            chat_meta: dict = {}
+            sender_name_for_agent = None  # 用于注入到消息中
             if len(msgs) > 0:
                 content = msgs[0].get_text_content()
                 if content:
                     name = msgs[0].get_text_content()[:10]
                 else:
                     name = "Media Message"
+                # 从消息的 metadata 中获取用户名等信息
+                msg_meta = getattr(msgs[0], "metadata", None) or {}
+                if msg_meta:
+                    # 提取飞书用户名等信息保存到 chat meta
+                    if "feishu_sender_name" in msg_meta:
+                        chat_meta["feishu_sender_name"] = msg_meta["feishu_sender_name"]
+                        sender_name_for_agent = msg_meta["feishu_sender_name"]
+                        # 如果有用户名，优先用作 chat name
+                        if msg_meta["feishu_sender_name"]:
+                            name = msg_meta["feishu_sender_name"]
+
+            # 如果有飞书用户名，在消息中注入用户身份提示
+            if sender_name_for_agent:
+                from agentscope.message import Msg
+                # 在用户消息前添加身份信息作为上下文提示
+                # 使用 system 角色确保 agent 能看到
+                sender_hint = Msg(
+                    name="system",
+                    role="system",
+                    content=[{
+                        "type": "text",
+                        "text": (
+                            f"[飞书用户身份识别] "
+                            f"发送本条消息的用户名称是「{sender_name_for_agent}」，"
+                            f"用户ID是 {user_id}。"
+                            f"此信息来自飞书消息元数据，请直接使用此名称称呼用户。"
+                        )
+                    }],
+                )
+                msgs = [sender_hint] + list(msgs)
+                logger.info(f"Injected sender hint: {sender_name_for_agent}")
 
             logger.debug(
                 f"DEBUG chat_manager status: "
@@ -394,6 +427,7 @@ class AgentRunner(Runner):
                     user_id,
                     channel,
                     name=name,
+                    meta=chat_meta if chat_meta else None,
                 )
                 logger.debug(f"Runner: Got chat: {chat.id}")
             else:

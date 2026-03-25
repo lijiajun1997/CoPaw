@@ -243,17 +243,27 @@ const convertMessages = (
   return result;
 };
 
-const chatSpecToSession = (chat: ChatSpec): ExtendedSession =>
-  ({
+const chatSpecToSession = (chat: ChatSpec): ExtendedSession => {
+  // 从 meta 中提取发送者名称
+  const senderName = (chat.meta as Record<string, unknown>)?.feishu_sender_name as string | undefined;
+  const originalName = (chat as ChatSpec & { name?: string }).name || DEFAULT_SESSION_NAME;
+
+  // 如果有发送者名称，在 session 名称前加上发送者
+  const displayName = senderName
+    ? `${senderName}: ${originalName}`
+    : originalName;
+
+  return {
     id: chat.id,
-    name: (chat as ChatSpec & { name?: string }).name || DEFAULT_SESSION_NAME,
+    name: displayName,
     sessionId: chat.session_id,
     userId: chat.user_id,
     channel: chat.channel,
     messages: [],
     meta: chat.meta || {},
     status: chat.status ?? "idle",
-  }) as ExtendedSession;
+  } as ExtendedSession;
+};
 
 /** Returns true when id is a pure numeric local timestamp (not a backend UUID). */
 const isLocalTimestamp = (id: string): boolean => /^\d+$/.test(id);

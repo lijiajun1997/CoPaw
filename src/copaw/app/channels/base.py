@@ -377,10 +377,23 @@ class BaseChannel(ABC):
             content_parts = [
                 TextContent(type=ContentType.TEXT, text=" "),
             ]
+        # 从 channel_meta 提取用户相关信息到消息的 metadata
+        # 注意：message_to_agentscope_msg 函数期望 metadata 嵌套在 message.metadata["metadata"] 中
+        msg_metadata: Dict[str, Any] = {}
+        if channel_meta:
+            # 提取飞书用户名等信息
+            inner_meta: Dict[str, Any] = {}
+            if "feishu_sender_name" in channel_meta:
+                inner_meta["feishu_sender_name"] = channel_meta["feishu_sender_name"]
+            if "feishu_sender_id" in channel_meta:
+                inner_meta["feishu_sender_id"] = channel_meta["feishu_sender_id"]
+            if inner_meta:
+                msg_metadata["metadata"] = inner_meta
         msg = Message(
             type=MessageType.MESSAGE,
             role=Role.USER,
             content=content_parts,
+            metadata=msg_metadata if msg_metadata else {},
         )
         return AgentRequest(
             session_id=session_id,

@@ -21,6 +21,7 @@ import sys
 import threading
 import types
 from collections import OrderedDict
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -35,7 +36,7 @@ from agentscope_runtime.engine.schemas.agent_schemas import (
 
 from ....config.config import FeishuConfig as FeishuChannelConfig
 from ....config.utils import get_config_path
-from ....constant import DEFAULT_MEDIA_DIR
+from ....constant import DEFAULT_MEDIA_DIR, WORKING_DIR
 from ..base import (
     BaseChannel,
     ContentType,
@@ -222,6 +223,12 @@ class FeishuChannel(BaseChannel):
 
         self._bot_open_id: Optional[str] = None
 
+        # 通讯录映射: open_id -> name (从缓存文件加载)
+        self._contacts_map: Dict[str, str] = {}
+        # 通讯录映射: open_id -> name (从全局缓存文件加载)
+        # 使用全局缓存文件 ~/.proudai/feishu_contacts.json
+        self._contacts_cache_file = Path(WORKING_DIR) / "feishu_contacts.json"
+
         # message_id dedup (ordered, trim when over limit)
         self._processed_message_ids: OrderedDict[str, None] = OrderedDict()
         # session_id -> (receive_id, receive_id_type) for send
@@ -230,6 +237,55 @@ class FeishuChannel(BaseChannel):
         # open_id -> nickname (from Contact API) for sender display
         self._nickname_cache: Dict[str, str] = {}
         self._nickname_cache_lock = asyncio.Lock()
+
+        # 启动时加载通讯录缓存
+        self._load_contacts_cache()
+
+    def _load_contacts_cache(self) -> None:
+        """从缓存文件加载通讯录映射"""
+        try:
+            if self._contacts_cache_file.exists():
+                with open(self._contacts_cache_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    self._contacts_map = data.get("contacts", {})
+                    logger.info(
+                        "feishu loaded contacts cache: %d users from %s",
+                        len(self._contacts_map),
+                        self._contacts_cache_file,
+                    )
+        except Exception as e:
+            logger.warning("feishu failed to load contacts cache: %s", e)
+            self._contacts_map = {}
+
+    def _save_contacts_cache_async(self) -> None:
+        """异步保存通讯录缓存（不阻塞主线程）"""
+        try:
+            import threading
+
+            def _save():
+                try:
+                    self._contacts_cache_file.parent.mkdir(parents=True, exist_ok=True)
+                    with open(self._contacts_cache_file, "w", encoding="utf-8") as f:
+                        json.dump(
+                            {
+                                "contacts": self._contacts_map,
+                                "updated_at": datetime.now().isoformat(),
+                            },
+                            f,
+                            ensure_ascii=False,
+                            indent=2,
+                        )
+                    logger.debug(
+                        "feishu saved contacts cache: %d users",
+                        len(self._contacts_map),
+                    )
+                except Exception as e:
+                    logger.warning("feishu failed to save contacts cache: %s", e)
+
+            thread = threading.Thread(target=_save, daemon=True)
+            thread.start()
+        except Exception as e:
+            logger.warning("feishu failed to start save thread: %s", e)
 
     @classmethod
     def from_env(
@@ -405,6 +461,35 @@ class FeishuChannel(BaseChannel):
             return {"receive_id_type": "open_id", "receive_id": s}
         return {"receive_id_type": "open_id", "receive_id": s}
 
+    async def _get_app_access_token(self) -> Optional[str]:
+        """Get app_access_token for Contact API calls."""
+        if not self._http_client:
+            return None
+        try:
+            base_url = (
+                "https://open.larksuite.com"
+                if self.domain == "lark"
+                else "https://open.feishu.cn"
+            )
+            url = f"{base_url}/open-apis/auth/v3/app_access_token/internal"
+            response = await self._http_client.post(
+                url,
+                json={"app_id": self.app_id, "app_secret": self.app_secret},
+                timeout=10.0,
+            )
+            data = response.json()
+            if data.get("code") == 0:
+                return data.get("app_access_token")
+            logger.warning(
+                "feishu get app_access_token failed: code=%s msg=%s",
+                data.get("code"),
+                data.get("msg"),
+            )
+            return None
+        except Exception as e:
+            logger.warning("feishu get app_access_token error: %s", e)
+            return None
+
     async def _fetch_bot_open_id(self) -> Optional[str]:
         """Get this bot's open_id via raw HTTP request.
 
@@ -452,7 +537,7 @@ class FeishuChannel(BaseChannel):
         """Fetch user name (nickname) from Feishu Contact API by open_id.
 
         Uses SDK contact.v3.user.get with user_id_type=open_id.
-        Requires permission: contact:user.base:readonly
+        Requires permission: contact:contact.base:readonly (或 contact:contact:readonly_as_app)
         Result is cached. Returns None on failure or missing permission.
 
         Returns:
@@ -460,45 +545,58 @@ class FeishuChannel(BaseChannel):
         """
         if not open_id or open_id.startswith("unknown_"):
             return None
+
+        # 先从内存缓存读取
         async with self._nickname_cache_lock:
             if open_id in self._nickname_cache:
                 return self._nickname_cache[open_id]
+
+        # 再从通讯录缓存文件读取
+        if open_id in self._contacts_map:
+            name = self._contacts_map[open_id]
+            async with self._nickname_cache_lock:
+                self._nickname_cache[open_id] = name
+            return name
         try:
-            req = (
-                GetUserRequest.builder()
-                .user_id(open_id)
-                .user_id_type("open_id")
-                .build()
-            )
-            resp = self._client.contact.v3.user.get(req)
-            if not resp.success():
+            # 使用 HTTP API 直接调用，而不是 SDK
+            # SDK 返回的字段值都是 'None' 字符串，可能是序列化问题
+            if not self._http_client:
+                self._http_client = httpx.AsyncClient(timeout=30.0)
+
+            # 获取 app_access_token（用于 Contact API）
+            app_token = await self._get_app_access_token()
+            if not app_token:
+                logger.warning("feishu get app_access_token failed, skipping user name fetch")
+                return None
+
+            url = f"https://open.feishu.cn/open-apis/contact/v3/users/{open_id}?user_id_type=open_id"
+            headers = {"Authorization": f"Bearer {app_token}"}
+
+            resp = await self._http_client.get(url, headers=headers)
+            data = resp.json()
+
+            if data.get("code") != 0:
                 logger.info(
-                    "feishu get user info api error: open_id=%s code=%s "
-                    "msg=%s",
+                    "feishu get user info api error: open_id=%s code=%s msg=%s",
                     open_id[:20],
-                    getattr(resp, "code", ""),
-                    getattr(resp, "msg", ""),
+                    data.get("code"),
+                    data.get("msg"),
                 )
                 return None
-            # Extract name from SDK response
-            user = getattr(resp.data, "user", None) if resp.data else None
-            name = None
-            if user:
-                # Try different name fields in order of preference
-                for attr in ("name", "en_name", "nickname"):
-                    raw_name = getattr(user, attr, None)
-                    if isinstance(raw_name, str) and raw_name.strip():
-                        name = raw_name.strip()
-                        break
 
-            if not name:
-                logger.info(
-                    "feishu get user name: no name in response (open_id=%s). "
-                    "App likely missing 'contact:user.base:readonly' permission. "
-                    "Available fields in response: %s",
-                    (open_id or "")[:20],
-                    list(user.keys()) if user else "No user object",
-                )
+            user = data.get("data", {}).get("user", {})
+            if not user:
+                logger.info("feishu get user: no user data for open_id=%s", open_id[:20])
+                return None
+
+            # 提取姓名
+            name = None
+            for attr in ("name", "en_name", "nickname"):
+                val = user.get(attr)
+                if val and isinstance(val, str) and val.strip():
+                    name = val.strip()
+                    logger.info("feishu found user name from %s: %s", attr, name)
+                    break
 
             if name:
                 async with self._nickname_cache_lock:
@@ -519,13 +617,6 @@ class FeishuChannel(BaseChannel):
                 "feishu get user name unexpected error: open_id=%s error=%s",
                 open_id[:20],
                 e,
-            )
-        return None
-        except Exception:
-            logger.debug(
-                "feishu get user name failed: open_id=%s",
-                open_id[:16],
-                exc_info=True,
             )
         return None
 
@@ -579,14 +670,34 @@ class FeishuChannel(BaseChannel):
             if not sender_id:
                 sender_id = f"unknown_{message_id[:8]}"
 
+            # Debug: log sender object
+            logger.info(
+                "feishu sender object: type=%s, attributes=%s",
+                type(sender).__name__,
+                {k: repr(getattr(sender, k, None))[:50] for k in ['name', 'nickname', 'sender_id', 'sender_type'] if hasattr(sender, k)}
+            )
+
+            # 尝试从消息 sender 对象获取昵称
             nickname = (
                 getattr(sender, "name", None)
                 or getattr(sender, "nickname", None)
                 or ""
             )
             nickname = nickname.strip() if isinstance(nickname, str) else ""
+            logger.info("feishu nickname from message: %s", repr(nickname))
+
+            # 如果消息中没有昵称，尝试从缓存或 API 获取
             if not nickname:
                 nickname = await self._get_user_name_by_open_id(sender_id)
+            else:
+                # 消息中有昵称，缓存起来
+                async with self._nickname_cache_lock:
+                    self._nickname_cache[sender_id] = nickname
+                # 同时更新通讯录缓存
+                if sender_id not in self._contacts_map:
+                    self._contacts_map[sender_id] = nickname
+                    self._save_contacts_cache_async()
+
             sender_display = sender_display_string(nickname, sender_id)
 
             chat_id = str(getattr(message, "chat_id", "") or "").strip()
