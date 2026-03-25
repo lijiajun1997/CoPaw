@@ -31,8 +31,13 @@ except ImportError:  # pragma: no cover - compatibility fallback
     GeminiChatModel = None
 
 from .utils.tool_message_utils import _sanitize_tool_messages
-from ..providers import ProviderManager
+from ..providers import ProviderManager, ModelSlotConfig, FallbackModelSlot
 from ..providers.retry_chat_model import RetryChatModel, RetryConfig
+from ..providers.fallback_chat_model import (
+    FallbackChatModel,
+    FallbackConfig,
+    FallbackModelConfig,
+)
 from ..token_usage import TokenRecordingModelWrapper
 from ..local_models import create_local_chat_model
 
@@ -349,12 +354,41 @@ def create_model_and_formatter(
     # Create the formatter based on the real model class
     formatter = _create_formatter_instance(model.__class__)
 
-    # Wrap with retry logic for transient LLM API errors
+    # Wrap with token recording
     wrapped_model = TokenRecordingModelWrapper(provider_id, model)
+
+    # Wrap with retry logic for transient LLM API errors
     wrapped_model = RetryChatModel(
         wrapped_model,
         retry_config=retry_config,
     )
+
+    # Wrap with fallback model logic if configured
+    if model_slot and model_slot.fallback_models:
+        fallback_configs = [
+            FallbackModelConfig(
+                provider_id=fm.provider_id,
+                model=fm.model,
+                name=f"{fm.provider_id}/{fm.model}",
+            )
+            for fm in model_slot.fallback_models
+        ]
+
+        fallback_config = FallbackConfig(
+            enabled=True,
+            fallback_models=fallback_configs,
+            max_retries_per_model=model_slot.max_retries_per_model,
+        )
+
+        wrapped_model = FallbackChatModel(
+            wrapped_model,
+            fallback_config=fallback_config,
+        )
+
+        logger.info(
+            f"Model fallback enabled: primary={provider_id}/{model_slot.model}, "
+            f"fallbacks={[f'{fm.provider_id}/{fm.model}' for fm in model_slot.fallback_models]}"
+        )
 
     return wrapped_model, formatter
 

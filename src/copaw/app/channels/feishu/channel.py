@@ -452,7 +452,11 @@ class FeishuChannel(BaseChannel):
         """Fetch user name (nickname) from Feishu Contact API by open_id.
 
         Uses SDK contact.v3.user.get with user_id_type=open_id.
+        Requires permission: contact:user.base:readonly
         Result is cached. Returns None on failure or missing permission.
+
+        Returns:
+            User name if available, None otherwise
         """
         if not open_id or open_id.startswith("unknown_"):
             return None
@@ -469,7 +473,7 @@ class FeishuChannel(BaseChannel):
             resp = self._client.contact.v3.user.get(req)
             if not resp.success():
                 logger.info(
-                    "feishu get user name api error: open_id=%s code=%s "
+                    "feishu get user info api error: open_id=%s code=%s "
                     "msg=%s",
                     open_id[:20],
                     getattr(resp, "code", ""),
@@ -480,17 +484,20 @@ class FeishuChannel(BaseChannel):
             user = getattr(resp.data, "user", None) if resp.data else None
             name = None
             if user:
-                # Try different name fields
+                # Try different name fields in order of preference
                 for attr in ("name", "en_name", "nickname"):
                     raw_name = getattr(user, attr, None)
                     if isinstance(raw_name, str) and raw_name.strip():
                         name = raw_name.strip()
                         break
+
             if not name:
                 logger.info(
-                    "feishu get user name: no name in response (open_id"
-                    "=%s). app likely missing contact name permission.",
+                    "feishu get user name: no name in response (open_id=%s). "
+                    "App likely missing 'contact:user.base:readonly' permission. "
+                    "Available fields in response: %s",
                     (open_id or "")[:20],
+                    list(user.keys()) if user else "No user object",
                 )
 
             if name:
@@ -507,6 +514,13 @@ class FeishuChannel(BaseChannel):
                 "feishu get user name timeout: open_id=%s",
                 open_id[:16],
             )
+        except Exception as e:
+            logger.warning(
+                "feishu get user name unexpected error: open_id=%s error=%s",
+                open_id[:20],
+                e,
+            )
+        return None
         except Exception:
             logger.debug(
                 "feishu get user name failed: open_id=%s",
@@ -768,6 +782,7 @@ class FeishuChannel(BaseChannel):
                 "feishu_chat_id": chat_id,
                 "feishu_chat_type": chat_type,
                 "feishu_sender_id": sender_id,
+                "feishu_sender_name": nickname,  # 添加用户名
                 "is_group": is_group,
             }
             receive_id = chat_id if is_group else sender_id
@@ -809,8 +824,9 @@ class FeishuChannel(BaseChannel):
                 "meta": meta,
             }
             logger.info(
-                "feishu recv from=%s chat=%s msg_id=%s type=%s text_len=%s",
+                "feishu recv from=%s (%s) chat=%s msg_id=%s type=%s text_len=%s",
                 sender_display[:40],
+                nickname[:30] if nickname else "N/A",
                 chat_id[:20] if chat_id else "",
                 message_id[:16] if message_id else "",
                 msg_type,

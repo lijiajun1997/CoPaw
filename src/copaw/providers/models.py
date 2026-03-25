@@ -71,9 +71,32 @@ class CustomProviderData(BaseModel):
     )
 
 
+class FallbackModelSlot(BaseModel):
+    """Configuration for a single fallback model."""
+
+    provider_id: str = Field(..., description="Fallback provider ID")
+    model: str = Field(..., description="Fallback model name")
+
+
 class ModelSlotConfig(BaseModel):
-    provider_id: str = Field(default="")
-    model: str = Field(default="")
+    """Active model configuration with optional fallback models.
+
+    When the primary model fails, the system will automatically try
+    fallback models in order.
+    """
+
+    provider_id: str = Field(default="", description="Primary provider ID")
+    model: str = Field(default="", description="Primary model name")
+    fallback_models: List[FallbackModelSlot] = Field(
+        default_factory=list,
+        description="List of fallback models to try if primary fails",
+    )
+    max_retries_per_model: int = Field(
+        default=1,
+        ge=1,
+        le=5,
+        description="Max retries for each model before switching to next",
+    )
 
 
 class ActiveModelsInfo(BaseModel):

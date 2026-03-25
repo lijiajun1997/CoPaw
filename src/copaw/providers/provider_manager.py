@@ -585,6 +585,8 @@ class ProviderManager:
         self.root_path = SECRET_DIR / "providers"
         self.builtin_path = self.root_path / "builtin"
         self.custom_path = self.root_path / "custom"
+        # Track file modification times for multi-worker hot reload
+        self._custom_provider_mtimes: Dict[str, float] = {}
         self._prepare_disk_storage()
         self._init_builtins()
         try:
@@ -626,6 +628,9 @@ class ProviderManager:
         self.builtin_providers[provider.id] = provider
 
     async def list_provider_info(self) -> List[ProviderInfo]:
+        # Scan for new custom providers on disk (multi-worker sync)
+        self._scan_new_custom_providers()
+
         tasks = [
             provider.get_info() for provider in self.builtin_providers.values()
         ]
@@ -635,13 +640,40 @@ class ProviderManager:
         provider_infos = await asyncio.gather(*tasks)
         return list(provider_infos)
 
+    def _scan_new_custom_providers(self) -> None:
+        """Scan disk for custom providers not yet loaded in memory.
+
+        In multi-worker environments, a new provider added by one worker
+        needs to be discovered by other workers.
+        """
+        try:
+            for provider_file in self.custom_path.glob("*.json"):
+                provider_id = provider_file.stem
+                # Skip if already loaded
+                if provider_id in self.custom_providers:
+                    continue
+
+                # Load new provider
+                provider = self.load_provider(provider_id, is_builtin=False)
+                if provider:
+                    self.custom_providers[provider_id] = provider
+                    self._custom_provider_mtimes[provider_id] = provider_file.stat().st_mtime
+                    logger.info(
+                        "Discovered and loaded new custom provider '%s' from disk (multi-worker sync)",
+                        provider_id,
+                    )
+        except Exception as e:
+            logger.warning("Failed to scan for new custom providers: %s", e)
+
     def get_provider(self, provider_id: str) -> Provider | None:
         # Return a provider instance by its ID. This will be used to create
         # chat model instances for the agent.
         if provider_id in self.builtin_providers:
             return self.builtin_providers[provider_id]
         if provider_id in self.custom_providers:
-            return self.custom_providers[provider_id]
+            # Check if custom provider needs hot reload for multi-worker support
+            self._reload_custom_provider_if_changed(provider_id)
+            return self.custom_providers.get(provider_id)
         return None
 
     async def get_provider_info(self, provider_id: str) -> ProviderInfo | None:
@@ -722,6 +754,10 @@ class ProviderManager:
         provider.support_connection_check = False
         self.custom_providers[provider.id] = provider
         self._save_provider(provider, is_builtin=False)
+        # Update mtime after saving
+        provider_path = self.custom_path / f"{provider.id}.json"
+        if provider_path.exists():
+            self._custom_provider_mtimes[provider.id] = provider_path.stat().st_mtime
         return await provider.get_info()
 
     def remove_custom_provider(self, provider_id: str) -> bool:
@@ -729,6 +765,8 @@ class ProviderManager:
         # providers.json file and remove the provider from the UI.
         if provider_id in self.custom_providers:
             del self.custom_providers[provider_id]
+            if provider_id in self._custom_provider_mtimes:
+                del self._custom_provider_mtimes[provider_id]
             provider_path = self.custom_path / f"{provider_id}.json"
             if provider_path.exists():
                 os.remove(provider_path)
@@ -1032,10 +1070,48 @@ class ProviderManager:
             provider = self.load_provider(provider_file.stem, is_builtin=False)
             if provider:
                 self.custom_providers[provider.id] = provider
+                # Track initial mtime for hot reload
+                self._custom_provider_mtimes[provider.id] = provider_file.stat().st_mtime
         # Load active model config
         active_model = self.load_active_model()
         if active_model:
             self.active_model = active_model
+
+    def _reload_custom_provider_if_changed(self, provider_id: str) -> None:
+        """Reload custom provider from disk if file has been modified.
+
+        This enables hot-reload in multi-worker environments where one worker
+        may add/update a provider while other workers need to see the change.
+        """
+        provider_path = self.custom_path / f"{provider_id}.json"
+        if not provider_path.exists():
+            # Provider was deleted, remove from memory
+            if provider_id in self.custom_providers:
+                del self.custom_providers[provider_id]
+                if provider_id in self._custom_provider_mtimes:
+                    del self._custom_provider_mtimes[provider_id]
+            return
+
+        try:
+            current_mtime = provider_path.stat().st_mtime
+            last_mtime = self._custom_provider_mtimes.get(provider_id, 0)
+
+            if current_mtime > last_mtime:
+                # File was modified, reload the provider
+                provider = self.load_provider(provider_id, is_builtin=False)
+                if provider:
+                    self.custom_providers[provider_id] = provider
+                    self._custom_provider_mtimes[provider_id] = current_mtime
+                    logger.info(
+                        "Hot-reloaded custom provider '%s' from disk (multi-worker sync)",
+                        provider_id,
+                    )
+        except Exception as e:
+            logger.warning(
+                "Failed to hot-reload provider '%s': %s",
+                provider_id,
+                e,
+            )
 
     def _apply_default_annotations(self):
         """Apply doc-based default annotations for unprobed models.
