@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from copaw.config.config import MultiUserMode, Config, AgentsConfig
+from copaw.config.config import MultiUserMode, Config
 
 
 class TestMultiUserMode:

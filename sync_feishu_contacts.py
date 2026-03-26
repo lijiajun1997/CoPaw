@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 飞书通讯录同步脚本
 使用获取用户列表 API (contact/v3/users) 同步所有用户到本地缓存
@@ -20,7 +21,6 @@
 import json
 import logging
 import os
-import sys
 from pathlib import Path
 from datetime import datetime
 
@@ -35,7 +35,7 @@ CACHE_FILE = Path.home() / ".proudai" / "feishu_contacts.json"
 # 日志
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -43,14 +43,19 @@ logger = logging.getLogger(__name__)
 class FeishuContactSyncer:
     """飞书通讯录同步器"""
 
-    def __init__(self, user_access_token: str = None, app_id: str = None, app_secret: str = None):
+    def __init__(
+        self,
+        user_access_token: str = None,
+        app_id: str = None,
+        app_secret: str = None,
+    ):
         self.user_access_token = user_access_token
         self.app_id = app_id
         self.app_secret = app_secret
         self.tenant_access_token = None
         self.contacts_map = {}
 
-    def _get_access_token(self) -> tuple[str, str]:
+    def _get_access_token(self) -> tuple[str | None, str | None]:
         """获取访问令牌，返回 (token, token_type)
 
         token_type: 'user' 或 'tenant'
@@ -63,7 +68,10 @@ class FeishuContactSyncer:
             try:
                 response = httpx.post(
                     url,
-                    json={"app_id": self.app_id, "app_secret": self.app_secret},
+                    json={
+                        "app_id": self.app_id,
+                        "app_secret": self.app_secret,
+                    },
                     timeout=30.0,
                 )
                 data = response.json()
@@ -96,7 +104,9 @@ class FeishuContactSyncer:
             CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
             with open(CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
-            logger.info(f"缓存已保存: {len(data.get('contacts', {}))} 个联系人 -> {CACHE_FILE}")
+            logger.info(
+                f"缓存已保存: {len(data.get('contacts', {}))} 个联系人 -> {CACHE_FILE}"
+            )
             return True
         except Exception as e:
             logger.error(f"保存缓存失败: {e}")
@@ -123,7 +133,10 @@ class FeishuContactSyncer:
         while True:
             page_num += 1
             try:
-                url = f"https://open.feishu.cn/open-apis/contact/v3/users?user_id_type=open_id&page_size={page_size}"
+                url = (
+                    "https://open.feishu.cn/open-apis/contact/v3/users"
+                    f"?user_id_type=open_id&page_size={page_size}"
+                )
                 if page_token:
                     url += f"&page_token={page_token}"
 
@@ -133,7 +146,10 @@ class FeishuContactSyncer:
                 data = response.json()
 
                 if data.get("code") != 0:
-                    logger.error(f"API 错误: code={data.get('code')}, msg={data.get('msg')}")
+                    logger.error(
+                        f"API 错误: code={data.get('code')}, "
+                        f"msg={data.get('msg')}",
+                    )
                     break
 
                 users = data.get("data", {}).get("items", [])
@@ -144,7 +160,11 @@ class FeishuContactSyncer:
 
                 for user in users:
                     open_id = user.get("open_id")
-                    name = user.get("name") or user.get("en_name") or user.get("nickname")
+                    name = (
+                        user.get("name")
+                        or user.get("en_name")
+                        or user.get("nickname")
+                    )
 
                     if open_id and name:
                         self.contacts_map[open_id] = name
@@ -186,7 +206,7 @@ def main():
 
     result = syncer.sync_all_users()
 
-    print(f"\n✅ 同步完成！")
+    print("\n✅ 同步完成！")
     print(f"总用户数: {result.get('total_count', 0)}")
     print(f"缓存文件: {CACHE_FILE}")
     print(f"更新时间: {result.get('updated_at')}")

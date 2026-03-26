@@ -55,6 +55,8 @@ if TYPE_CHECKING:
         Event,
     )
 
+    from ..runner.task_tracker import TaskTracker
+
 # process: accepts AgentRequest, streams Event
 # (including message events with status completed)
 ProcessHandler = Callable[[Any], AsyncIterator["Event"]]
@@ -126,6 +128,11 @@ class BaseChannel(ABC):
         self._debounce_seconds: float = 0.0
         self._debounce_pending: Dict[str, List[Any]] = {}
         self._debounce_timers: Dict[str, asyncio.Task[None]] = {}
+        self._task_tracker: Optional["TaskTracker"] = None
+
+    def set_task_tracker(self, tracker: "TaskTracker") -> None:
+        """Allow ChannelManager to inject a TaskTracker reference."""
+        self._task_tracker = tracker
 
     def _is_native_payload(self, payload: Any) -> bool:
         """True if payload is a native dict that can be time-debounced."""
@@ -378,15 +385,20 @@ class BaseChannel(ABC):
                 TextContent(type=ContentType.TEXT, text=" "),
             ]
         # 从 channel_meta 提取用户相关信息到消息的 metadata
-        # 注意：message_to_agentscope_msg 函数期望 metadata 嵌套在 message.metadata["metadata"] 中
+        # 注意：message_to_agentscope_msg 函数期望 metadata 嵌套在
+        # message.metadata["metadata"] 中
         msg_metadata: Dict[str, Any] = {}
         if channel_meta:
             # 提取飞书用户名等信息
             inner_meta: Dict[str, Any] = {}
             if "feishu_sender_name" in channel_meta:
-                inner_meta["feishu_sender_name"] = channel_meta["feishu_sender_name"]
+                inner_meta["feishu_sender_name"] = channel_meta[
+                    "feishu_sender_name"
+                ]
             if "feishu_sender_id" in channel_meta:
-                inner_meta["feishu_sender_id"] = channel_meta["feishu_sender_id"]
+                inner_meta["feishu_sender_id"] = channel_meta[
+                    "feishu_sender_id"
+                ]
             if inner_meta:
                 msg_metadata["metadata"] = inner_meta
         msg = Message(
@@ -601,7 +613,8 @@ class BaseChannel(ABC):
                         if workspace and workspace.runner:
                             process = workspace.runner.stream_query
                             logger.info(
-                                "Multi-user: routing user '%s' to workspace '%s'",
+                                "Multi-user: routing user '%s' to "
+                                "workspace '%s'",
                                 user_id,
                                 workspace.agent_id,
                             )

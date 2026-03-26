@@ -44,10 +44,10 @@ def _sanitize_agent_id(agent_id: str) -> str:
 
     # Replace unsafe characters with underscore
     # Unsafe: / \ : * ? " < > | and control characters
-    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', agent_id)
+    sanitized = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", agent_id)
 
     # Remove leading/trailing spaces and dots
-    sanitized = sanitized.strip(' .')
+    sanitized = sanitized.strip(" .")
 
     # Ensure non-empty
     if not sanitized:
@@ -158,15 +158,17 @@ class MultiAgentManager:
                 if not shared_ref:
                     raise ValueError(
                         "Shared workspace not found in configuration. "
-                        "Please create 'shared' agent profile."
+                        "Please create 'shared' agent profile.",
                     )
 
                 self._shared_workspace_manager = SharedWorkspaceManager(
-                    workspace_dir=Path(shared_ref.workspace_dir)
+                    workspace_dir=Path(shared_ref.workspace_dir),
                 )
 
             # Get or create the shared workspace
-            workspace = await self._shared_workspace_manager.get_or_create_workspace()
+            workspace = (
+                await self._shared_workspace_manager.get_or_create_workspace()
+            )
 
             # Ensure user space exists if user_id provided
             if user_id:
@@ -205,9 +207,11 @@ class MultiAgentManager:
             if safe_agent_id not in config.agents.profiles:
                 logger.info(
                     f"Agent '{safe_agent_id}' not found in configuration. "
-                    f"Auto-creating for multi-user support..."
+                    f"Auto-creating for multi-user support...",
                 )
-                await self._ensure_user_agent_exists(safe_agent_id, display_name)
+                await self._ensure_user_agent_exists(
+                    safe_agent_id, display_name
+                )
                 # Reload config after creation
                 config = load_config()
 
@@ -264,15 +268,20 @@ class MultiAgentManager:
         if default_dir.exists():
             # Create agent.json based on default
             self._create_shared_agent_config(
-                shared_workspace_dir, default_dir
+                shared_workspace_dir,
+                default_dir,
             )
         else:
             self._create_minimal_agent_config(
-                shared_workspace_dir, "shared", "Shared Agent"
+                shared_workspace_dir,
+                "shared",
+                "Shared Agent",
             )
 
         # Add to root config
-        self._add_agent_to_config("shared", str(shared_workspace_dir), "Shared Agent")
+        self._add_agent_to_config(
+            "shared", str(shared_workspace_dir), "Shared Agent"
+        )
 
         logger.info(f"Shared workspace created at: {shared_workspace_dir}")
 
@@ -308,7 +317,9 @@ class MultiAgentManager:
                 logger.warning(f"Failed to copy default config: {e}")
 
         # Fallback to minimal config
-        self._create_minimal_agent_config(workspace_dir, "shared", "Shared Agent")
+        self._create_minimal_agent_config(
+            workspace_dir, "shared", "Shared Agent"
+        )
 
     def get_shared_workspace_manager(self) -> Optional[SharedWorkspaceManager]:
         """Get the SharedWorkspaceManager instance.
@@ -410,12 +421,18 @@ class MultiAgentManager:
             return
 
         if dir_exists:
-            logger.debug(f"User workspace directory exists but not in config: {agent_id}")
+            logger.debug(
+                f"User workspace directory exists but not in config: {agent_id}"
+            )
             # Directory exists but config missing - update agent.json and add config entry
             agent_name = display_name or agent_id
             self._update_agent_config(user_workspace_dir, agent_id, agent_name)
-            self._add_agent_to_config(agent_id, str(user_workspace_dir), agent_name)
-            logger.info(f"Added existing workspace to config for user: {agent_name}")
+            self._add_agent_to_config(
+                agent_id, str(user_workspace_dir), agent_name
+            )
+            logger.info(
+                f"Added existing workspace to config for user: {agent_name}"
+            )
             return
 
         # Use display_name if provided, otherwise use agent_id
@@ -428,16 +445,24 @@ class MultiAgentManager:
             if default_dir.exists():
                 shutil.copytree(default_dir, user_workspace_dir)
                 # Update agent.json with correct id and name
-                self._update_agent_config(user_workspace_dir, agent_id, agent_name)
+                self._update_agent_config(
+                    user_workspace_dir, agent_id, agent_name
+                )
                 logger.info(f"Copied default workspace for user: {agent_name}")
             else:
                 # Create minimal config if no default exists
                 user_workspace_dir.mkdir(parents=True, exist_ok=True)
-                self._create_minimal_agent_config(user_workspace_dir, agent_id, agent_name)
-                logger.info(f"Created minimal workspace for user: {agent_name}")
+                self._create_minimal_agent_config(
+                    user_workspace_dir, agent_id, agent_name
+                )
+                logger.info(
+                    f"Created minimal workspace for user: {agent_name}"
+                )
 
             # Add agent reference to root config
-            self._add_agent_to_config(agent_id, str(user_workspace_dir), agent_name)
+            self._add_agent_to_config(
+                agent_id, str(user_workspace_dir), agent_name
+            )
 
         except Exception as e:
             # Clean up partially created directory on failure
@@ -448,7 +473,7 @@ class MultiAgentManager:
                     pass
             logger.error(f"Failed to create user agent workspace: {e}")
             raise RuntimeError(
-                f"Failed to create workspace for agent '{agent_id}': {e}"
+                f"Failed to create workspace for agent '{agent_id}': {e}",
             ) from e
 
     def _update_agent_config(
@@ -527,8 +552,6 @@ class MultiAgentManager:
             workspace_dir: Path to the workspace directory
             agent_name: The display name for the agent
         """
-        import tempfile
-
         config_path = get_config_path()
 
         try:
@@ -566,7 +589,9 @@ class MultiAgentManager:
         # Atomic rename (on POSIX systems, and works on Windows too)
         try:
             tmp_path.replace(config_path_obj)
-            logger.info(f"Successfully added agent '{agent_id}' to config.json")
+            logger.info(
+                f"Successfully added agent '{agent_id}' to config.json"
+            )
         except Exception as e:
             logger.error(f"Failed to replace config file: {e}")
             # Try to clean up temp file
@@ -879,7 +904,10 @@ class MultiAgentManager:
         """
         agents = list(self.agents.keys())
         # Include shared workspace if active
-        if self._shared_workspace_manager and self._shared_workspace_manager.workspace:
+        if (
+            self._shared_workspace_manager
+            and self._shared_workspace_manager.workspace
+        ):
             if "shared" not in agents:
                 agents.append("shared")
         return agents

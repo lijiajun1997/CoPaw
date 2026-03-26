@@ -23,9 +23,11 @@ from typing import (
 from .base import BaseChannel, ContentType, ProcessHandler, TextContent
 from .registry import get_channel_registry
 from ...config import get_available_channels
+from ..runner.daemon_commands import is_stop_command
 
 if TYPE_CHECKING:
     from ....config.config import Config
+    from ..runner.task_tracker import TaskTracker
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +42,28 @@ _CONSUMER_WORKERS_PER_CHANNEL = 4
 
 # Default session timeout in seconds (1 hour - session level, not tool level)
 _SESSION_TIMEOUT_SECONDS = 3600
+
+
+def _extract_text_from_payload(ch: BaseChannel, payload: Any) -> str:
+    """Extract first text content from a payload for /stop detection."""
+    try:
+        request = ch._payload_to_request(payload)
+        if not request.input:
+            return ""
+        contents = list(
+            getattr(request.input[0], "content", None) or [],
+        )
+        for c in contents:
+            ctype = getattr(c, "type", None)
+            if ctype in (ContentType.TEXT, "text"):
+                return getattr(c, "text", "") or ""
+        return ""
+    except Exception:
+        logger.debug(
+            "Failed to extract text from payload for /stop detection",
+            exc_info=True,
+        )
+        return ""
 
 
 def _drain_same_key(
@@ -134,6 +158,11 @@ class ChannelManager:
         # [image1, text] are not split across workers (avoids no-text
         # debounce reordering and duplicate content in AgentRequest).
         self._key_locks: Dict[Tuple[str, str], asyncio.Lock] = {}
+        # Track active processing tasks per session key for /stop cancellation
+        self._active_process_tasks: Dict[
+            Tuple[str, str],
+            asyncio.Task,
+        ] = {}
         # Track session start times for timeout monitoring
         self._session_start_times: Dict[Tuple[str, str], float] = {}
         # Background timeout monitor task
@@ -304,6 +333,13 @@ class ChannelManager:
                 else "queue",
             )
         if (channel_id, key) in self._in_progress:
+            # /stop must bypass pending — put directly in queue so a free
+            # worker can pick it up immediately and cancel the running task.
+            if ch._task_tracker is not None:
+                _stop_text = _extract_text_from_payload(ch, payload)
+                if is_stop_command(_stop_text):
+                    q.put_nowait(payload)
+                    return
             self._pending.setdefault((channel_id, key), []).append(payload)
             return
         q.put_nowait(payload)
@@ -337,8 +373,9 @@ class ChannelManager:
         once, then flush any pending for this session (merged) back to queue.
         Multiple workers per channel allow different sessions in parallel.
 
-        Includes timeout protection: sessions that exceed _SESSION_TIMEOUT_SECONDS
-        will be cancelled to prevent indefinite blocking.
+        Includes timeout protection: sessions that exceed
+        _SESSION_TIMEOUT_SECONDS will be cancelled to prevent indefinite
+        blocking.
         """
         import time
 
@@ -353,10 +390,51 @@ class ChannelManager:
                     continue
                 key = ch.get_debounce_key(payload)
 
+                # --- /stop fast-path: bypass session lock ---
+                if ch._task_tracker is not None:
+                    _stop_text = _extract_text_from_payload(ch, payload)
+                    if is_stop_command(_stop_text):
+                        logger.info(
+                            "/stop fast-path: key=%s text=%r",
+                            key,
+                            _stop_text[:30],
+                        )
+                        try:
+                            # Cancel the active processing task for this key
+                            active = self._active_process_tasks.get(
+                                (channel_id, key),
+                            )
+                            if active and not active.done():
+                                active.cancel()
+                                stopped = True
+                                logger.info(
+                                    "/stop cancelled active task: key=%s",
+                                    key,
+                                )
+                            else:
+                                stopped = False
+                            request = ch._payload_to_request(payload)
+                            msg = (
+                                "Task stopped."
+                                if stopped
+                                else "No running task."
+                            )
+                            to_handle = ch.get_to_handle_from_request(request)
+                            await ch.send(to_handle, msg)
+                        except Exception:
+                            logger.exception(
+                                "/stop fast-path failed: key=%s",
+                                key,
+                            )
+                        continue
+                # --- end /stop fast-path ---
+
                 # Check if this session is already being processed
                 # If so, add to pending instead of waiting for lock
                 if (channel_id, key) in self._in_progress:
-                    self._pending.setdefault((channel_id, key), []).append(payload)
+                    self._pending.setdefault((channel_id, key), []).append(
+                        payload,
+                    )
                     continue
 
                 key_lock = self._key_locks.setdefault(
@@ -365,7 +443,9 @@ class ChannelManager:
                 )
                 # Non-blocking check: if lock is held, add to pending
                 if key_lock.locked():
-                    self._pending.setdefault((channel_id, key), []).append(payload)
+                    self._pending.setdefault((channel_id, key), []).append(
+                        payload,
+                    )
                     continue
 
                 async with key_lock:
@@ -374,11 +454,28 @@ class ChannelManager:
                     batch = _drain_same_key(q, ch, key, payload)
 
                 try:
-                    # Wrap processing with timeout to prevent stuck sessions
-                    await asyncio.wait_for(
+                    process_task = asyncio.create_task(
                         _process_batch(ch, batch),
-                        timeout=_SESSION_TIMEOUT_SECONDS,
                     )
+                    self._active_process_tasks[
+                        (channel_id, key)
+                    ] = process_task
+                    try:
+                        # Wrap with timeout to prevent stuck sessions
+                        await asyncio.wait_for(
+                            process_task,
+                            timeout=_SESSION_TIMEOUT_SECONDS,
+                        )
+                    except asyncio.CancelledError:
+                        logger.info(
+                            "/stop: task cancelled for key=%s",
+                            key,
+                        )
+                    finally:
+                        self._active_process_tasks.pop(
+                            (channel_id, key),
+                            None,
+                        )
                 except asyncio.TimeoutError:
                     logger.warning(
                         "Session %s timed out after %s seconds, cancelling",
@@ -389,20 +486,33 @@ class ChannelManager:
                     try:
                         if hasattr(ch, "send_text") and batch:
                             # Extract user info from batch if available
-                            first = batch[0] if isinstance(batch[0], dict) else {}
-                            user_id = first.get("senderId", "") or first.get("user_id", "")
-                            session_id = first.get("conversationId", "") or first.get("session_id", "")
+                            first = (
+                                batch[0] if isinstance(batch[0], dict) else {}
+                            )
+                            user_id = first.get("senderId", "") or first.get(
+                                "user_id",
+                                "",
+                            )
+                            session_id = first.get(
+                                "conversationId",
+                                "",
+                            ) or first.get("session_id", "")
                             if user_id and session_id:
                                 await ch.send_text(
                                     to_handle=ch.to_handle_from_target(
                                         user_id=user_id,
                                         session_id=session_id,
-                                    ) if hasattr(ch, "to_handle_from_target") else "",
+                                    )
+                                    if hasattr(ch, "to_handle_from_target")
+                                    else "",
                                     text=(
-                                        f"⏰ 会话处理超时（{_SESSION_TIMEOUT_SECONDS // 60} 分钟），已自动取消。\n"
+                                        f"⏰ 会话处理超时（"
+                                        f"{_SESSION_TIMEOUT_SECONDS // 60} "
+                                        f"分钟），已自动取消。\n"
                                         f"请重新发送您的消息。\n\n"
-                                        f"Session timed out after {_SESSION_TIMEOUT_SECONDS // 60} minutes. "
-                                        f"Please resend your message."
+                                        f"Session timed out after "
+                                        f"{_SESSION_TIMEOUT_SECONDS // 60} "
+                                        f"minutes. Please resend message."
                                     ),
                                 )
                     except Exception as notify_err:
@@ -570,11 +680,14 @@ class ChannelManager:
                 1
                 for t in self._consumer_tasks
                 if not t.done()
-                and t.get_name().startswith(f"channel_consumer_{new_channel_name}_")
+                and t.get_name().startswith(
+                    f"channel_consumer_{new_channel_name}_",
+                )
             )
             if running_count < _CONSUMER_WORKERS_PER_CHANNEL:
                 logger.info(
-                    "replace_channel: starting %d consumer(s) for %s (had %d running)",
+                    "replace_channel: starting %d consumer(s) for %s "
+                    "(had %d running)",
                     _CONSUMER_WORKERS_PER_CHANNEL - running_count,
                     new_channel_name,
                     running_count,

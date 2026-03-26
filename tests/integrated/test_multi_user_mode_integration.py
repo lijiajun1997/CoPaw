@@ -6,7 +6,6 @@ Tests the complete flow of switching between MULTI_AGENT and SHARED_AGENT modes.
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -83,7 +82,8 @@ class TestModeSwitching:
 
     @pytest.mark.asyncio
     async def test_multi_agent_mode_creates_separate_workspaces(
-        self, multi_agent_config: Config
+        self,
+        multi_agent_config: Config,
     ) -> None:
         """Test MULTI_AGENT mode creates separate workspaces for different users."""
         manager = MultiAgentManager()
@@ -92,7 +92,9 @@ class TestModeSwitching:
             "copaw.app.multi_agent_manager.load_config",
             return_value=multi_agent_config,
         ):
-            with patch("copaw.app.multi_agent_manager.Workspace") as MockWorkspace:
+            with patch(
+                "copaw.app.multi_agent_manager.Workspace"
+            ) as MockWorkspace:
                 # Mock workspace creation
                 mock_ws1 = MagicMock()
                 mock_ws1.start = AsyncMock()
@@ -110,11 +112,12 @@ class TestModeSwitching:
                 MockWorkspace.side_effect = [mock_ws1, mock_ws2]
 
                 # Mock the _ensure_user_agent_exists to add to config
-                original_config = multi_agent_config.model_copy(deep=True)
 
-                def mock_ensure(agent_id, display_name):
+                def mock_ensure(agent_id, _display_name):
                     # Simulate adding agent to config
-                    multi_agent_config.agents.profiles[agent_id] = AgentProfileRef(
+                    multi_agent_config.agents.profiles[
+                        agent_id
+                    ] = AgentProfileRef(
                         id=agent_id,
                         workspace_dir=f"/workspaces/{agent_id}",
                     )
@@ -122,7 +125,7 @@ class TestModeSwitching:
                 with patch.object(
                     manager,
                     "_ensure_user_agent_exists",
-                    side_effect=lambda aid, dn=None: mock_ensure(aid, dn)
+                    side_effect=lambda aid, dn=None: mock_ensure(aid, dn),
                 ):
                     # Get workspaces for two different users
                     ws1 = await manager.get_agent("user1")
@@ -136,7 +139,8 @@ class TestModeSwitching:
 
     @pytest.mark.asyncio
     async def test_shared_agent_mode_reuses_workspace(
-        self, shared_agent_config: Config
+        self,
+        shared_agent_config: Config,
     ) -> None:
         """Test SHARED_AGENT mode reuses same workspace for different users."""
         manager = MultiAgentManager()
@@ -146,13 +150,13 @@ class TestModeSwitching:
             return_value=shared_agent_config,
         ):
             with patch(
-                "copaw.app.multi_agent_manager.SharedWorkspaceManager"
+                "copaw.app.multi_agent_manager.SharedWorkspaceManager",
             ) as MockSharedManager:
                 # Mock shared workspace manager
                 mock_shared = MagicMock()
                 mock_workspace = MagicMock()
                 mock_shared.get_or_create_workspace = AsyncMock(
-                    return_value=mock_workspace
+                    return_value=mock_workspace,
                 )
                 mock_shared.ensure_user_space = MagicMock()
                 MockSharedManager.return_value = mock_shared
@@ -170,7 +174,8 @@ class TestModeSwitching:
 
     @pytest.mark.asyncio
     async def test_shared_mode_user_spaces_are_isolated(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
     ) -> None:
         """Test that user spaces are properly isolated in shared mode."""
         shared_dir = tmp_path / "shared"

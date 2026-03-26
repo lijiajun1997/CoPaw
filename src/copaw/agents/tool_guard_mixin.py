@@ -299,6 +299,7 @@ class ToolGuardMixin:
             )
             # 返回超时错误信息给 LLM，让它继续判断处理
             from agentscope.message import ToolResultBlock
+
             timeout_msg = Msg(
                 "tool",  # 工具结果必须使用 tool 角色
                 [
@@ -310,16 +311,22 @@ class ToolGuardMixin:
                             {
                                 "type": "text",
                                 "text": (
-                                    f"⏰ 工具调用超时（{TOOL_CALL_TIMEOUT_SECONDS // 60} 分钟）\n"
-                                    f"Tool '{tool_name}' timed out after {TOOL_CALL_TIMEOUT_SECONDS // 60} minutes.\n\n"
+                                    f"⏰ 工具调用超时（"
+                                    f"{TOOL_CALL_TIMEOUT_SECONDS // 60} "
+                                    f"分钟）\n"
+                                    f"Tool '{tool_name}' timed out after "
+                                    f"{TOOL_CALL_TIMEOUT_SECONDS // 60} "
+                                    f"minutes.\n\n"
                                     f"请尝试：\n"
                                     f"1. 将任务拆分为更小的步骤\n"
-                                    f"2. 使用其他方法完成任务\n"
-                                    f"3. 如需继续，请告诉我下一步操作\n\n"
+                                    f"2. 用其他方法完成任务\n"
+                                    f"3. 如需继续，告诉我下一步"
+                                    f"\n\n"
                                     f"Please try:\n"
                                     f"1. Break the task into smaller steps\n"
                                     f"2. Use alternative methods\n"
-                                    f"3. Tell me the next step if you want to continue"
+                                    f"3. Tell me the next step if you "
+                                    f"want to continue"
                                 ),
                             },
                         ],
@@ -474,6 +481,7 @@ class ToolGuardMixin:
             )
             # 返回超时错误信息给 LLM
             from agentscope.message import ToolResultBlock
+
             timeout_msg = Msg(
                 "tool",  # 工具结果必须使用 tool 角色
                 [
@@ -485,16 +493,22 @@ class ToolGuardMixin:
                             {
                                 "type": "text",
                                 "text": (
-                                    f"⏰ 工具调用超时（{TOOL_CALL_TIMEOUT_SECONDS // 60} 分钟）\n"
-                                    f"Tool '{tool_name}' timed out after {TOOL_CALL_TIMEOUT_SECONDS // 60} minutes.\n\n"
+                                    f"⏰ 工具调用超时（"
+                                    f"{TOOL_CALL_TIMEOUT_SECONDS // 60} "
+                                    f"分钟）\n"
+                                    f"Tool '{tool_name}' timed out after "
+                                    f"{TOOL_CALL_TIMEOUT_SECONDS // 60} "
+                                    f"minutes.\n\n"
                                     f"请尝试：\n"
                                     f"1. 将任务拆分为更小的步骤\n"
-                                    f"2. 使用其他方法完成任务\n"
-                                    f"3. 如需继续，请告诉我下一步操作\n\n"
+                                    f"2. 用其他方法完成任务\n"
+                                    f"3. 如需继续，告诉我下一步"
+                                    f"\n\n"
                                     f"Please try:\n"
                                     f"1. Break the task into smaller steps\n"
                                     f"2. Use alternative methods\n"
-                                    f"3. Tell me the next step if you want to continue"
+                                    f"3. Tell me the next step if you "
+                                    f"want to continue"
                                 ),
                             },
                         ],
@@ -829,23 +843,34 @@ class ToolGuardMixin:
             label = "Tool Guard & File Guard / 工具护栏 & 文件护栏"
             hint_en = (
                 "Triggered by tool guardrails "
-                "(configurable in Security → Tool Guard / File Guard settings)"
+                "(configurable in Security → Tool Guard / "
+                "File Guard settings)"
             )
-            hint_zh = "触发工具护栏 & 文件护栏（在安全-工具护栏 / 文件护栏页面可以更改设置）"
+            hint_zh = (
+                "触发工具护栏 & 文件护栏"
+                + "（在安全-工具护栏 / 文件护栏页面"
+                + "可以更改设置）"
+            )
         elif has_file:
             label = "File Guard / 文件护栏"
             hint_en = (
                 "Triggered by file guardrails "
                 "(configurable in Security → File Guard settings)"
             )
-            hint_zh = "触发文件护栏（在安全-文件护栏页面可以更改设置）"
+            hint_zh = (
+                "触发文件护栏"
+                + "（在安全-文件护栏页面可以更改设置）"
+            )
         else:
             label = "Tool Guard / 工具护栏"
             hint_en = (
                 "Triggered by tool guardrails "
                 "(configurable in Security → Tool Guard settings)"
             )
-            hint_zh = "触发工具护栏（在安全-工具护栏页面可以更改设置）"
+            hint_zh = (
+                "触发工具护栏"
+                "（在安全-工具护栏页面可以更改设置）"
+            )
         return label, f"💡 {hint_en}\n💡 {hint_zh}"
 
     async def _emit_waiting_for_approval(self) -> Msg:

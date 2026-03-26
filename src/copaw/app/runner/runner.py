@@ -128,9 +128,7 @@ class AgentRunner(Runner):
             List of session IDs with active tasks
         """
         return [
-            sid
-            for sid, task in self._session_tasks.items()
-            if not task.done()
+            sid for sid, task in self._session_tasks.items() if not task.done()
         ]
 
     _APPROVAL_TIMEOUT_SECONDS = TOOL_GUARD_APPROVAL_TIMEOUT_SECONDS
@@ -308,7 +306,10 @@ class AgentRunner(Runner):
             )
 
             # Check if we're in shared mode and get user space
-            from ..multi_agent_manager import get_multi_agent_manager as _get_manager
+            from ..multi_agent_manager import (
+                get_multi_agent_manager as _get_manager,
+            )
+
             manager = _get_manager()
             if manager and user_id:
                 user_context = manager.get_user_context(user_id)
@@ -382,7 +383,9 @@ class AgentRunner(Runner):
                 if msg_meta:
                     # 提取飞书用户名等信息保存到 chat meta
                     if "feishu_sender_name" in msg_meta:
-                        chat_meta["feishu_sender_name"] = msg_meta["feishu_sender_name"]
+                        chat_meta["feishu_sender_name"] = msg_meta[
+                            "feishu_sender_name"
+                        ]
                         sender_name_for_agent = msg_meta["feishu_sender_name"]
                         # 如果有用户名，优先用作 chat name
                         if msg_meta["feishu_sender_name"]:
@@ -390,21 +393,22 @@ class AgentRunner(Runner):
 
             # 如果有飞书用户名，在消息中注入用户身份提示
             if sender_name_for_agent:
-                from agentscope.message import Msg
                 # 在用户消息前添加身份信息作为上下文提示
                 # 使用 system 角色确保 agent 能看到
                 sender_hint = Msg(
                     name="system",
                     role="system",
-                    content=[{
-                        "type": "text",
-                        "text": (
-                            f"[飞书用户身份识别] "
-                            f"发送本条消息的用户名称是「{sender_name_for_agent}」，"
-                            f"用户ID是 {user_id}。"
-                            f"此信息来自飞书消息元数据，请直接使用此名称称呼用户。"
-                        )
-                    }],
+                    content=[
+                        {
+                            "type": "text",
+                            "text": (
+                                f"[飞书用户身份识别] "
+                                f"发送本条消息的用户名称是「{sender_name_for_agent}」，"
+                                f"用户ID是 {user_id}。"
+                                f"此信息来自飞书消息元数据，请直接使用此名称称呼用户。"
+                            ),
+                        }
+                    ],
                 )
                 msgs = [sender_hint] + list(msgs)
                 logger.info(f"Injected sender hint: {sender_name_for_agent}")
@@ -461,7 +465,7 @@ class AgentRunner(Runner):
             ):
                 yield msg, last
 
-        except asyncio.CancelledError as exc:
+        except asyncio.CancelledError:
             logger.info(f"query_handler: {session_id} cancelled!")
             if agent is not None:
                 await agent.interrupt()

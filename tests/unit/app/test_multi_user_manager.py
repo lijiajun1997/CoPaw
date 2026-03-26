@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
 
@@ -94,7 +92,7 @@ class TestEnsureUserAgentExists:
         }
         (default_dir / "agent.json").write_text(
             json.dumps(agent_config, indent=2),
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
         # Create root config
@@ -103,32 +101,39 @@ class TestEnsureUserAgentExists:
             "agents": {
                 "active_agent": "default",
                 "profiles": {
-                    "default": {"workspace_dir": str(default_dir)}
-                }
-            }
+                    "default": {"workspace_dir": str(default_dir)},
+                },
+            },
         }
         (tmp_path / "config.json").write_text(
             json.dumps(root_config, indent=2),
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
         return tmp_path
 
     @pytest.mark.asyncio
-    async def test_creates_new_user_workspace(self, temp_working_dir: Path) -> None:
+    async def test_creates_new_user_workspace(
+        self, temp_working_dir: Path
+    ) -> None:
         """Test that a new user workspace is created."""
         from copaw.app.multi_agent_manager import MultiAgentManager
 
-        with patch("copaw.app.multi_agent_manager.load_config") as mock_load, \
-             patch("copaw.app.multi_agent_manager.get_config_path") as mock_config_path, \
-             patch("copaw.config.utils.WORKING_DIR", temp_working_dir):
-
+        with patch(
+            "copaw.app.multi_agent_manager.load_config"
+        ) as mock_load, patch(
+            "copaw.app.multi_agent_manager.get_config_path"
+        ) as mock_config_path, patch(
+            "copaw.config.utils.WORKING_DIR", temp_working_dir
+        ):
             # Setup mocks
             mock_config = MagicMock()
             mock_config.working_dir = str(temp_working_dir)
             mock_config.agents.profiles = {"default": MagicMock()}
             mock_load.return_value = mock_config
-            mock_config_path.return_value = str(temp_working_dir / "config.json")
+            mock_config_path.return_value = str(
+                temp_working_dir / "config.json"
+            )
 
             manager = MultiAgentManager()
 
@@ -147,7 +152,9 @@ class TestEnsureUserAgentExists:
             assert config["name"] == "test_user"
 
     @pytest.mark.asyncio
-    async def test_existing_workspace_not_overwritten(self, temp_working_dir: Path) -> None:
+    async def test_existing_workspace_not_overwritten(
+        self, temp_working_dir: Path
+    ) -> None:
         """Test that existing workspace is not overwritten."""
         from copaw.app.multi_agent_manager import MultiAgentManager
 
@@ -156,16 +163,20 @@ class TestEnsureUserAgentExists:
         user_workspace.mkdir(parents=True)
         (user_workspace / "agent.json").write_text(
             json.dumps({"id": "existing_user", "name": "Original Name"}),
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
-        with patch("copaw.app.multi_agent_manager.load_config") as mock_load, \
-             patch("copaw.app.multi_agent_manager.get_config_path") as mock_config_path:
-
+        with patch(
+            "copaw.app.multi_agent_manager.load_config"
+        ) as mock_load, patch(
+            "copaw.app.multi_agent_manager.get_config_path"
+        ) as mock_config_path:
             mock_config = MagicMock()
             mock_config.working_dir = str(temp_working_dir)
             mock_load.return_value = mock_config
-            mock_config_path.return_value = str(temp_working_dir / "config.json")
+            mock_config_path.return_value = str(
+                temp_working_dir / "config.json"
+            )
 
             manager = MultiAgentManager()
 
@@ -178,7 +189,9 @@ class TestEnsureUserAgentExists:
             assert config["name"] == "Original Name"
 
     @pytest.mark.asyncio
-    async def test_creates_minimal_config_when_no_default(self, tmp_path: Path) -> None:
+    async def test_creates_minimal_config_when_no_default(
+        self, tmp_path: Path
+    ) -> None:
         """Test minimal config created when default workspace doesn't exist."""
         from copaw.app.multi_agent_manager import MultiAgentManager
 
@@ -191,18 +204,21 @@ class TestEnsureUserAgentExists:
             "working_dir": str(tmp_path),
             "agents": {
                 "active_agent": "default",
-                "profiles": {}
-            }
+                "profiles": {},
+            },
         }
         (tmp_path / "config.json").write_text(
             json.dumps(root_config, indent=2),
-            encoding="utf-8"
+            encoding="utf-8",
         )
 
-        with patch("copaw.app.multi_agent_manager.load_config") as mock_load, \
-             patch("copaw.app.multi_agent_manager.get_config_path") as mock_config_path, \
-             patch("copaw.config.utils.WORKING_DIR", tmp_path):
-
+        with patch(
+            "copaw.app.multi_agent_manager.load_config"
+        ) as mock_load, patch(
+            "copaw.app.multi_agent_manager.get_config_path"
+        ) as mock_config_path, patch(
+            "copaw.config.utils.WORKING_DIR", tmp_path
+        ):
             mock_config = MagicMock()
             mock_config.working_dir = str(tmp_path)
             mock_load.return_value = mock_config
@@ -231,14 +247,17 @@ class TestGetAgent:
         manager = MultiAgentManager()
 
         # Mock the workspace creation to avoid actual startup
-        with patch.object(manager, "_ensure_user_agent_exists") as mock_ensure, \
-             patch("copaw.app.multi_agent_manager.load_config") as mock_load, \
-             patch("copaw.app.multi_agent_manager.Workspace") as mock_workspace_cls:
-
+        with patch.object(
+            manager, "_ensure_user_agent_exists"
+        ) as mock_ensure, patch(
+            "copaw.app.multi_agent_manager.load_config"
+        ) as mock_load, patch(
+            "copaw.app.multi_agent_manager.Workspace"
+        ) as mock_workspace_cls:
             # Setup mocks
             mock_config = MagicMock()
             mock_config.agents.profiles = {
-                "user_test": MagicMock(workspace_dir="/tmp/test")
+                "user_test": MagicMock(workspace_dir="/tmp/test"),
             }
             mock_load.return_value = mock_config
 
@@ -270,13 +289,15 @@ class TestAddAgentToConfig:
             "agents": {
                 "active_agent": "default",
                 "profiles": {
-                    "default": {"workspace_dir": "/tmp/default"}
-                }
-            }
+                    "default": {"workspace_dir": "/tmp/default"},
+                },
+            },
         }
         config_path.write_text(json.dumps(initial_config), encoding="utf-8")
 
-        with patch("copaw.app.multi_agent_manager.get_config_path") as mock_path:
+        with patch(
+            "copaw.app.multi_agent_manager.get_config_path"
+        ) as mock_path:
             mock_path.return_value = str(config_path)
 
             manager = MultiAgentManager()
@@ -287,7 +308,10 @@ class TestAddAgentToConfig:
             config = json.load(f)
 
         assert "new_user" in config["agents"]["profiles"]
-        assert config["agents"]["profiles"]["new_user"]["workspace_dir"] == "/tmp/new_user"
+        assert (
+            config["agents"]["profiles"]["new_user"]["workspace_dir"]
+            == "/tmp/new_user"
+        )
         # Existing agent should still be there
         assert "default" in config["agents"]["profiles"]
 
@@ -298,7 +322,9 @@ class TestAddAgentToConfig:
         config_path = tmp_path / "config.json"
         config_path.write_text("{}", encoding="utf-8")
 
-        with patch("copaw.app.multi_agent_manager.get_config_path") as mock_path:
+        with patch(
+            "copaw.app.multi_agent_manager.get_config_path"
+        ) as mock_path:
             mock_path.return_value = str(config_path)
 
             manager = MultiAgentManager()

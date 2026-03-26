@@ -2,9 +2,8 @@
 """Edge case tests for multi-user mode functionality."""
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -113,7 +112,9 @@ class TestSharedWorkspaceManagerEdgeCases:
         manager.ensure_user_space("existing_user")
 
         assert (user_dir / "existing_file.txt").exists()
-        assert (user_dir / "existing_file.txt").read_text() == "existing content"
+        assert (
+            user_dir / "existing_file.txt"
+        ).read_text() == "existing content"
 
     def test_workspace_manager_repr_when_running(self, tmp_path: Path) -> None:
         """Test repr when workspace is running."""

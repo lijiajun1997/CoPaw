@@ -657,9 +657,12 @@ class ProviderManager:
                 provider = self.load_provider(provider_id, is_builtin=False)
                 if provider:
                     self.custom_providers[provider_id] = provider
-                    self._custom_provider_mtimes[provider_id] = provider_file.stat().st_mtime
+                    self._custom_provider_mtimes[
+                        provider_id
+                    ] = provider_file.stat().st_mtime
                     logger.info(
-                        "Discovered and loaded new custom provider '%s' from disk (multi-worker sync)",
+                        "Discovered and loaded new custom provider '%s' "
+                        "from disk (multi-worker sync)",
                         provider_id,
                     )
         except Exception as e:
@@ -757,7 +760,9 @@ class ProviderManager:
         # Update mtime after saving
         provider_path = self.custom_path / f"{provider.id}.json"
         if provider_path.exists():
-            self._custom_provider_mtimes[provider.id] = provider_path.stat().st_mtime
+            self._custom_provider_mtimes[
+                provider.id
+            ] = provider_path.stat().st_mtime
         return await provider.get_info()
 
     def remove_custom_provider(self, provider_id: str) -> bool:
@@ -1071,7 +1076,9 @@ class ProviderManager:
             if provider:
                 self.custom_providers[provider.id] = provider
                 # Track initial mtime for hot reload
-                self._custom_provider_mtimes[provider.id] = provider_file.stat().st_mtime
+                self._custom_provider_mtimes[
+                    provider.id
+                ] = provider_file.stat().st_mtime
         # Load active model config
         active_model = self.load_active_model()
         if active_model:

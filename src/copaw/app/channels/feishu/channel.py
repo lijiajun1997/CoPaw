@@ -98,7 +98,6 @@ else:
 
 try:
     import lark_oapi as lark
-    from lark_oapi.api.contact.v3 import GetUserRequest
     from lark_oapi.api.im.v1 import (
         CreateFileRequest,
         CreateFileRequestBody,
@@ -114,7 +113,6 @@ try:
     )
 except ImportError:  # pragma: no cover - optional dependency may be missing
     lark = None  # type: ignore[assignment]
-    GetUserRequest = None  # type: ignore[assignment]
     CreateFileRequest = None  # type: ignore[assignment]
     CreateFileRequestBody = None  # type: ignore[assignment]
     CreateImageRequest = None  # type: ignore[assignment]
@@ -245,7 +243,9 @@ class FeishuChannel(BaseChannel):
         """从缓存文件加载通讯录映射"""
         try:
             if self._contacts_cache_file.exists():
-                with open(self._contacts_cache_file, "r", encoding="utf-8") as f:
+                with open(
+                    self._contacts_cache_file, "r", encoding="utf-8"
+                ) as f:
                     data = json.load(f)
                     self._contacts_map = data.get("contacts", {})
                     logger.info(
@@ -260,12 +260,16 @@ class FeishuChannel(BaseChannel):
     def _save_contacts_cache_async(self) -> None:
         """异步保存通讯录缓存（不阻塞主线程）"""
         try:
-            import threading
 
             def _save():
                 try:
-                    self._contacts_cache_file.parent.mkdir(parents=True, exist_ok=True)
-                    with open(self._contacts_cache_file, "w", encoding="utf-8") as f:
+                    self._contacts_cache_file.parent.mkdir(
+                        parents=True,
+                        exist_ok=True,
+                    )
+                    with open(
+                        self._contacts_cache_file, "w", encoding="utf-8"
+                    ) as f:
                         json.dump(
                             {
                                 "contacts": self._contacts_map,
@@ -280,7 +284,9 @@ class FeishuChannel(BaseChannel):
                         len(self._contacts_map),
                     )
                 except Exception as e:
-                    logger.warning("feishu failed to save contacts cache: %s", e)
+                    logger.warning(
+                        "feishu failed to save contacts cache: %s", e
+                    )
 
             thread = threading.Thread(target=_save, daemon=True)
             thread.start()
@@ -537,7 +543,8 @@ class FeishuChannel(BaseChannel):
         """Fetch user name (nickname) from Feishu Contact API by open_id.
 
         Uses SDK contact.v3.user.get with user_id_type=open_id.
-        Requires permission: contact:contact.base:readonly (或 contact:contact:readonly_as_app)
+        Requires permission: contact:contact.base:readonly
+        (或 contact:contact:readonly_as_app)
         Result is cached. Returns None on failure or missing permission.
 
         Returns:
@@ -566,10 +573,16 @@ class FeishuChannel(BaseChannel):
             # 获取 app_access_token（用于 Contact API）
             app_token = await self._get_app_access_token()
             if not app_token:
-                logger.warning("feishu get app_access_token failed, skipping user name fetch")
+                logger.warning(
+                    "feishu get app_access_token failed, "
+                    "skipping user name fetch",
+                )
                 return None
 
-            url = f"https://open.feishu.cn/open-apis/contact/v3/users/{open_id}?user_id_type=open_id"
+            url = (
+                f"https://open.feishu.cn/open-apis/contact/v3/users/"
+                f"{open_id}?user_id_type=open_id"
+            )
             headers = {"Authorization": f"Bearer {app_token}"}
 
             resp = await self._http_client.get(url, headers=headers)
@@ -586,7 +599,10 @@ class FeishuChannel(BaseChannel):
 
             user = data.get("data", {}).get("user", {})
             if not user:
-                logger.info("feishu get user: no user data for open_id=%s", open_id[:20])
+                logger.info(
+                    "feishu get user: no user data for open_id=%s",
+                    open_id[:20],
+                )
                 return None
 
             # 提取姓名
@@ -595,7 +611,9 @@ class FeishuChannel(BaseChannel):
                 val = user.get(attr)
                 if val and isinstance(val, str) and val.strip():
                     name = val.strip()
-                    logger.info("feishu found user name from %s: %s", attr, name)
+                    logger.info(
+                        "feishu found user name from %s: %s", attr, name
+                    )
                     break
 
             if name:
@@ -671,10 +689,20 @@ class FeishuChannel(BaseChannel):
                 sender_id = f"unknown_{message_id[:8]}"
 
             # Debug: log sender object
+            sender_attrs = {
+                k: repr(getattr(sender, k, None))[:50]
+                for k in [
+                    "name",
+                    "nickname",
+                    "sender_id",
+                    "sender_type",
+                ]
+                if hasattr(sender, k)
+            }
             logger.info(
                 "feishu sender object: type=%s, attributes=%s",
                 type(sender).__name__,
-                {k: repr(getattr(sender, k, None))[:50] for k in ['name', 'nickname', 'sender_id', 'sender_type'] if hasattr(sender, k)}
+                sender_attrs,
             )
 
             # 尝试从消息 sender 对象获取昵称

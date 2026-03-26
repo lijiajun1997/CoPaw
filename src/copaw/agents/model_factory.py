@@ -31,7 +31,7 @@ except ImportError:  # pragma: no cover - compatibility fallback
     GeminiChatModel = None
 
 from .utils.tool_message_utils import _sanitize_tool_messages
-from ..providers import ProviderManager, ModelSlotConfig, FallbackModelSlot
+from ..providers import ProviderManager
 from ..providers.retry_chat_model import RetryChatModel, RetryConfig
 from ..providers.fallback_chat_model import (
     FallbackChatModel,
@@ -385,9 +385,13 @@ def create_model_and_formatter(
             fallback_config=fallback_config,
         )
 
+        fallback_list = [
+            f"{fm.provider_id}/{fm.model}"
+            for fm in model_slot.fallback_models
+        ]
         logger.info(
             f"Model fallback enabled: primary={provider_id}/{model_slot.model}, "
-            f"fallbacks={[f'{fm.provider_id}/{fm.model}' for fm in model_slot.fallback_models]}"
+            f"fallbacks={fallback_list}"
         )
 
     return wrapped_model, formatter

@@ -31,7 +31,15 @@ class RestartInProgressError(Exception):
 
 DAEMON_PREFIX = "/daemon"
 DAEMON_SUBCOMMANDS = frozenset(
-    {"status", "restart", "reload-config", "version", "logs", "approve", "stop"},
+    {
+        "status",
+        "restart",
+        "reload-config",
+        "version",
+        "logs",
+        "approve",
+        "stop",
+    },
 )
 # Short names: /restart -> /daemon restart, etc.
 DAEMON_SHORT_ALIASES = {
@@ -58,6 +66,13 @@ class DaemonContext:
     agent_id: Optional[str] = None
     # Session ID for approval commands.
     session_id: str = ""
+
+
+def is_stop_command(text: str | None) -> bool:
+    """True if text is a /stop command (with optional trailing args)."""
+    if not text:
+        return False
+    return text.strip().lower().startswith("/stop")
 
 
 def _get_last_lines(
@@ -181,6 +196,11 @@ def run_daemon_logs(context: DaemonContext, lines: int = 100) -> str:
     log_path = context.working_dir / "copaw.log"
     content = _get_last_lines(log_path, lines=lines)
     return f"**Console log (last {lines} lines)**\n\n```\n{content}\n```"
+
+
+def run_daemon_stop_idle(_context: DaemonContext) -> str:
+    """Handle /stop when session is idle — no task to cancel."""
+    return "No running task."
 
 
 async def run_daemon_approve(
@@ -355,11 +375,7 @@ class DaemonCommandHandlerMixin:
             session_id = getattr(context, "session_id", "") or ""
             text = await run_daemon_approve(context, session_id=session_id)
         elif sub == "stop":
-            session_id = getattr(context, "session_id", "") or ""
-            # Check if args contain a specific session_id to stop
-            if args and args[0] and not args[0].isdigit():
-                session_id = args[0]
-            text = await run_daemon_stop(session_id=session_id)
+            text = run_daemon_stop_idle(context)
         else:
             text = "Unknown daemon subcommand."
         logger.info("handle_daemon_command %s completed", query)

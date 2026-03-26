@@ -2,14 +2,13 @@
 """Tests for MultiAgentManager dual mode support."""
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
 
 import pytest
 
 from copaw.app.multi_agent_manager import MultiAgentManager
-from copaw.config.config import MultiUserMode, Config, AgentsConfig, AgentProfileRef
+from copaw.config.config import MultiUserMode, Config, AgentProfileRef
 
 
 class TestMultiAgentManagerDualMode:
@@ -112,13 +111,15 @@ class TestMultiAgentManagerSharedMode:
             "shared": AgentProfileRef(
                 id="shared",
                 workspace_dir=str(tmp_path / "workspaces" / "shared"),
-            )
+            ),
         }
         return config
 
     @pytest.mark.asyncio
     async def test_get_agent_in_shared_mode(
-        self, tmp_path: Path, mock_config_shared: MagicMock
+        self,
+        tmp_path: Path,
+        mock_config_shared: MagicMock,
     ) -> None:
         """Test get_agent returns shared workspace in SHARED_AGENT mode."""
         manager = MultiAgentManager()
@@ -128,12 +129,12 @@ class TestMultiAgentManagerSharedMode:
             return_value=mock_config_shared,
         ):
             with patch(
-                "copaw.app.multi_agent_manager.SharedWorkspaceManager"
+                "copaw.app.multi_agent_manager.SharedWorkspaceManager",
             ) as MockSharedManager:
                 mock_shared_manager = MagicMock()
                 mock_workspace = MagicMock()
                 mock_shared_manager.get_or_create_workspace = AsyncMock(
-                    return_value=mock_workspace
+                    return_value=mock_workspace,
                 )
                 mock_shared_manager.ensure_user_space = MagicMock()
                 MockSharedManager.return_value = mock_shared_manager
@@ -144,11 +145,15 @@ class TestMultiAgentManagerSharedMode:
                 )
 
                 assert workspace is mock_workspace
-                mock_shared_manager.ensure_user_space.assert_called_with("user123")
+                mock_shared_manager.ensure_user_space.assert_called_with(
+                    "user123"
+                )
 
     @pytest.mark.asyncio
     async def test_get_user_space_dir_in_shared_mode(
-        self, tmp_path: Path, mock_config_shared: MagicMock
+        self,
+        tmp_path: Path,
+        mock_config_shared: MagicMock,
     ) -> None:
         """Test get_user_space_dir works after shared workspace is created."""
         manager = MultiAgentManager()
@@ -158,11 +163,11 @@ class TestMultiAgentManagerSharedMode:
             return_value=mock_config_shared,
         ):
             with patch(
-                "copaw.app.multi_agent_manager.SharedWorkspaceManager"
+                "copaw.app.multi_agent_manager.SharedWorkspaceManager",
             ) as MockSharedManager:
                 mock_shared_manager = MagicMock()
                 mock_shared_manager.get_user_space_dir = MagicMock(
-                    return_value=tmp_path / "users" / "user123"
+                    return_value=tmp_path / "users" / "user123",
                 )
                 MockSharedManager.return_value = mock_shared_manager
 
@@ -196,7 +201,9 @@ class TestMultiAgentManagerMultiAgentMode:
 
     @pytest.mark.asyncio
     async def test_get_agent_creates_user_workspace(
-        self, tmp_path: Path, mock_config_multi: MagicMock
+        self,
+        tmp_path: Path,
+        mock_config_multi: MagicMock,
     ) -> None:
         """Test get_agent creates workspace for user in MULTI_AGENT mode."""
         manager = MultiAgentManager()
@@ -206,7 +213,7 @@ class TestMultiAgentManagerMultiAgentMode:
             return_value=mock_config_multi,
         ):
             with patch(
-                "copaw.app.multi_agent_manager.Workspace"
+                "copaw.app.multi_agent_manager.Workspace",
             ) as MockWorkspace:
                 mock_workspace = MagicMock()
                 mock_workspace.start = AsyncMock()
