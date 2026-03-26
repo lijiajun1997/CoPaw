@@ -300,7 +300,7 @@ class ToolGuardMixin:
             # 返回超时错误信息给 LLM，让它继续判断处理
             from agentscope.message import ToolResultBlock
             timeout_msg = Msg(
-                "system",
+                "tool",  # 工具结果必须使用 tool 角色
                 [
                     ToolResultBlock(
                         type="tool_result",
@@ -325,7 +325,7 @@ class ToolGuardMixin:
                         ],
                     ),
                 ],
-                "system",
+                "tool",  # role 必须是 tool
             )
             await self.print(timeout_msg, True)
             await self.memory.add(timeout_msg)
@@ -475,7 +475,7 @@ class ToolGuardMixin:
             # 返回超时错误信息给 LLM
             from agentscope.message import ToolResultBlock
             timeout_msg = Msg(
-                "system",
+                "tool",  # 工具结果必须使用 tool 角色
                 [
                     ToolResultBlock(
                         type="tool_result",
@@ -500,7 +500,7 @@ class ToolGuardMixin:
                         ],
                     ),
                 ],
-                "system",
+                "tool",  # role 必须是 tool
             )
             await self.print(timeout_msg, True)
             await self.memory.add(timeout_msg)
