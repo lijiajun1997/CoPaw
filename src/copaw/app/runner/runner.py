@@ -465,7 +465,8 @@ class AgentRunner(Runner):
             logger.info(f"query_handler: {session_id} cancelled!")
             if agent is not None:
                 await agent.interrupt()
-            raise RuntimeError("Task has been cancelled!") from exc
+            # 静默返回，不抛出错误（取消是正常行为，通常是用户发送了新消息）
+            return
         except Exception as e:
             debug_dump_path = write_query_error_dump(
                 request=request,

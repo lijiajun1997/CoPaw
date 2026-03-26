@@ -22,6 +22,9 @@ from ..security.tool_guard.models import TOOL_GUARD_DENIED_MARK
 
 logger = logging.getLogger(__name__)
 
+# 单次工具调用的超时时间（秒），默认 10 分钟
+TOOL_CALL_TIMEOUT_SECONDS = 600
+
 
 class _GuardAction:
     """Lightweight container for a guard decision made under lock."""
@@ -281,7 +284,52 @@ class ToolGuardMixin:
         if action is not None:
             return await self._execute_guard_action(action, tool_call)
 
-        result = await super()._acting(tool_call)  # type: ignore[misc]
+        # 执行工具调用，带超时保护
+        tool_name = str(tool_call.get("name", "unknown"))
+        try:
+            result = await asyncio.wait_for(
+                super()._acting(tool_call),  # type: ignore[misc]
+                timeout=TOOL_CALL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Tool call '%s' timed out after %s seconds",
+                tool_name,
+                TOOL_CALL_TIMEOUT_SECONDS,
+            )
+            # 返回超时错误信息给 LLM，让它继续判断处理
+            from agentscope.message import ToolResultBlock
+            timeout_msg = Msg(
+                "system",
+                [
+                    ToolResultBlock(
+                        type="tool_result",
+                        id=tool_call.get("id", ""),
+                        name=tool_name,
+                        output=[
+                            {
+                                "type": "text",
+                                "text": (
+                                    f"⏰ 工具调用超时（{TOOL_CALL_TIMEOUT_SECONDS // 60} 分钟）\n"
+                                    f"Tool '{tool_name}' timed out after {TOOL_CALL_TIMEOUT_SECONDS // 60} minutes.\n\n"
+                                    f"请尝试：\n"
+                                    f"1. 将任务拆分为更小的步骤\n"
+                                    f"2. 使用其他方法完成任务\n"
+                                    f"3. 如需继续，请告诉我下一步操作\n\n"
+                                    f"Please try:\n"
+                                    f"1. Break the task into smaller steps\n"
+                                    f"2. Use alternative methods\n"
+                                    f"3. Tell me the next step if you want to continue"
+                                ),
+                            },
+                        ],
+                    ),
+                ],
+                "system",
+            )
+            await self.print(timeout_msg, True)
+            await self.memory.add(timeout_msg)
+            return None
 
         if getattr(self, "_tool_guard_forced_replay_active", False):
             tool_name = str(tool_call.get("name", ""))
@@ -412,7 +460,52 @@ class ToolGuardMixin:
         tool_input: dict[str, Any],
     ) -> dict | None:
         """Execute approved call and persist replay state."""
-        result = await super()._acting(tool_call)  # type: ignore[misc]
+        # 执行工具调用，带超时保护
+        try:
+            result = await asyncio.wait_for(
+                super()._acting(tool_call),  # type: ignore[misc]
+                timeout=TOOL_CALL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Approved tool call '%s' timed out after %s seconds",
+                tool_name,
+                TOOL_CALL_TIMEOUT_SECONDS,
+            )
+            # 返回超时错误信息给 LLM
+            from agentscope.message import ToolResultBlock
+            timeout_msg = Msg(
+                "system",
+                [
+                    ToolResultBlock(
+                        type="tool_result",
+                        id=tool_call.get("id", ""),
+                        name=tool_name,
+                        output=[
+                            {
+                                "type": "text",
+                                "text": (
+                                    f"⏰ 工具调用超时（{TOOL_CALL_TIMEOUT_SECONDS // 60} 分钟）\n"
+                                    f"Tool '{tool_name}' timed out after {TOOL_CALL_TIMEOUT_SECONDS // 60} minutes.\n\n"
+                                    f"请尝试：\n"
+                                    f"1. 将任务拆分为更小的步骤\n"
+                                    f"2. 使用其他方法完成任务\n"
+                                    f"3. 如需继续，请告诉我下一步操作\n\n"
+                                    f"Please try:\n"
+                                    f"1. Break the task into smaller steps\n"
+                                    f"2. Use alternative methods\n"
+                                    f"3. Tell me the next step if you want to continue"
+                                ),
+                            },
+                        ],
+                    ),
+                ],
+                "system",
+            )
+            await self.print(timeout_msg, True)
+            await self.memory.add(timeout_msg)
+            return None
+
         if getattr(self, "_tool_guard_forced_replay_active", False):
             self._tool_guard_forced_replay_active = False
             self._tool_guard_replay_done = {

@@ -636,13 +636,10 @@ class BaseChannel(ABC):
                 args = self.get_on_reply_sent_args(request, to_handle)
                 self._on_reply_sent(self.channel, *args)
         except asyncio.CancelledError:
+            # 任务被取消通常是用户发送了新消息，静默处理
             logger.info("Session task cancelled: %s", session_id)
-            await self._on_consume_error(
-                request,
-                to_handle,
-                "⚠️ Task has been stopped by user.\n任务已被用户停止。",
-            )
-            raise
+            # 不显示错误消息，静默返回
+            return
         except Exception:
             logger.exception("channel consume_one failed")
             await self._on_consume_error(

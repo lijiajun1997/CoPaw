@@ -38,8 +38,8 @@ _CHANNEL_QUEUE_MAXSIZE = 1000
 # Workers per channel: drain same-session from queue and process in parallel
 _CONSUMER_WORKERS_PER_CHANNEL = 4
 
-# Default session timeout in seconds (10 minutes)
-_SESSION_TIMEOUT_SECONDS = 600
+# Default session timeout in seconds (1 hour - session level, not tool level)
+_SESSION_TIMEOUT_SECONDS = 3600
 
 
 def _drain_same_key(
