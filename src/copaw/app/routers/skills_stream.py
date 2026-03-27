@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 # flake8: noqa: E501
+# pylint: disable=line-too-long
 """
 Streaming AI skill optimization API
 """
@@ -31,11 +32,11 @@ def get_model():
 
 
 # System prompts for different languages
-SYSTEM_PROMPTS = {
-    "en": """You are an AI skill optimization expert. Please optimize the following skill content.
+SYSTEM_PROMPTS = {  # noqa: E501 pylint: disable=line-too-long
+    "en": """You are an AI skill optimization expert. Please optimize the following skill content.  # noqa: E501
 
 ## Output Format Requirements
-Output the skill content directly. Do NOT use code block markers (like ```yaml or ```). Do NOT add any explanations.
+Output the skill content directly. Do NOT use code block markers (like ```yaml or ```). Do NOT add any explanations.  # noqa: E501
 
 ## Optimization Rules
 1. Keep the frontmatter structure (--- enclosed header section)
@@ -84,7 +85,7 @@ description: 查询指定城市天气信息，返回温度、湿度、风力等�
 
 ---
 请优化此技能:""",
-    "ru": """Вы эксперт по оптимизации AI-навыков. Пожалуйста, оптимизируйте навык.
+    "ru": """Вы эксперт по оптимизации AI-навыков. Пожалуйста, оптимизируйте навык.  # noqa: E501
 
 ## Требования к формату вывода
 Выводите содержимое навыка напрямую. НЕ используйте маркеры блока кода.

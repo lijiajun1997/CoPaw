@@ -118,7 +118,8 @@ class DynamicMultiAgentRunner:
         # MULTI_AGENT mode: check if context var was explicitly set
         context_agent_id = _current_agent_id.get()
         logger.debug(
-            "_get_workspace_runner: MULTI_AGENT mode, agent_id=%s, context_agent_id=%s",
+            "_get_workspace_runner: MULTI_AGENT mode, "
+            "agent_id=%s, context_agent_id=%s",
             agent_id,
             context_agent_id,
         )
@@ -127,7 +128,7 @@ class DynamicMultiAgentRunner:
             if user_id:
                 agent_id = user_id
                 logger.info(
-                    f"Multi-user mode: using user_id '{user_id}' as agent_id"
+                    f"Multi-user mode: using user_id '{user_id}' as agent_id",
                 )
 
         logger.info(f"_get_workspace_runner: final agent_id={agent_id}")
@@ -248,6 +249,7 @@ async def lifespan(
 
     # Set global instance for multi-user routing
     from .multi_agent_manager import set_multi_agent_manager
+
     set_multi_agent_manager(multi_agent_manager)
 
     # Start all configured agents (handled by manager)

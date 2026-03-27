@@ -38,6 +38,8 @@ from ...config.utils import load_config
 from ..session_task_registry import (
     register_session_task,
     unregister_session_task,
+    is_session_running,
+    cancel_session_task,
 )
 
 # Optional callback to enqueue payload (set by manager)
@@ -580,6 +582,50 @@ class BaseChannel(ABC):
         session_id = getattr(request, "session_id", "") or ""
         current_task = asyncio.current_task()
 
+        # Check if there's a running task for this session
+        if is_session_running(session_id):
+            # Extract user input
+            user_input = self._extract_user_input_from_request(request)
+
+            # Check for /stop command
+            if user_input.strip().lower().startswith("/stop"):
+                # Cancel the running task
+                if cancel_session_task(session_id):
+                    await self.send_content_parts(
+                        to_handle,
+                        [TextContent(type=ContentType.TEXT, text="⏹️ 任务已停止")],
+                        send_meta,
+                    )
+                else:
+                    await self.send_content_parts(
+                        to_handle,
+                        [TextContent(type=ContentType.TEXT, text="无法停止任务，请稍后重试")],
+                        send_meta,
+                    )
+                return
+
+            # Enqueue user input for injection
+            if user_input:
+                from ..user_input_queue import get_user_input_queue
+                from ...agents.user_input_formatter import format_user_interrupt_ack
+
+                queue = get_user_input_queue()
+                user_id = getattr(request, "user_id", "") or ""
+                await queue.enqueue(session_id, user_input, user_id)
+
+                # Send acknowledgment
+                ack_msg = format_user_interrupt_ack(user_input)
+                await self.send_content_parts(
+                    to_handle,
+                    [TextContent(type=ContentType.TEXT, text=ack_msg)],
+                    send_meta,
+                )
+                logger.info(
+                    "Enqueued user input for running session %s",
+                    session_id[:16],
+                )
+            return
+
         # Register this task for /stop command support
         if session_id and current_task is not None:
             register_session_task(session_id, current_task)
@@ -711,6 +757,32 @@ class BaseChannel(ABC):
         event: Any,
     ) -> None:
         """Hook: response event received. Default: no-op."""
+
+    def _extract_user_input_from_request(
+        self,
+        request: "AgentRequest",
+    ) -> str:
+        """Extract user input text from AgentRequest.
+
+        Args:
+            request: Agent request object
+
+        Returns:
+            User input text
+        """
+        if not request.input:
+            return ""
+
+        texts = []
+        for msg in request.input:
+            content = getattr(msg, "content", None) or []
+            for part in content:
+                if getattr(part, "type", None) == ContentType.TEXT:
+                    text = getattr(part, "text", "")
+                    if text:
+                        texts.append(text)
+
+        return "\n".join(texts)
 
     async def _on_consume_error(
         self,

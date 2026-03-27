@@ -30,25 +30,29 @@ from ..constant import WORKING_DIR
 SECURITY_WARNING = """
 Security warning — please read.
 
-CoPaw is a personal assistant that runs in your own environment. It can connect to
-channels (DingTalk, Feishu, QQ, Discord, iMessage, etc.) and run skills that read
-files, run commands, and call external APIs. By default it is a single-operator
-boundary: one trusted user. A malicious or confused prompt can lead the agent to
-do unsafe things if tools are enabled.
+CoPaw is a personal assistant that runs in your own environment. It can
+connect to channels (DingTalk, Feishu, QQ, Discord, iMessage, etc.) and run
+skills that read files, run commands, and call external APIs. By default it is
+a single-operator boundary: one trusted user. A malicious or confused prompt
+can lead the agent to do unsafe things if tools are enabled.
 
-If multiple people can message the same CoPaw instance with tools enabled, they
-share the same delegated authority (files, commands, secrets the agent can use).
+If multiple people can message the same CoPaw instance with tools enabled,
+they share the same delegated authority (files, commands, secrets the agent
+can use).
 
-If you are not comfortable with access control and hardening, do not run CoPaw with
-tools or expose it to untrusted users. Get help from someone experienced before
-enabling powerful skills or exposing the bot to the internet.
+If you are not comfortable with access control and hardening, do not run
+CoPaw with tools or expose it to untrusted users. Get help from someone
+experienced before enabling powerful skills or exposing the bot to the
+internet.
 
 Recommended baseline:
-- Restrict which channels and users can trigger the agent; use allowlists where possible.
-- Multi-user or shared inbox: use separate config/credentials and ideally separate
-  OS users or hosts per trust boundary.
+- Restrict which channels and users can trigger the agent; use allowlists
+  where possible.
+- Multi-user or shared inbox: use separate config/credentials and ideally
+  separate OS users or hosts per trust boundary.
 - Run skills with least privilege; sandbox where you can.
-- Keep secrets out of the agent's working directory and skill-accessible paths.
+- Keep secrets out of the agent's working directory and skill-accessible
+  paths.
 - Use a capable model when the agent has tools or handles untrusted input.
 
 Review your config and skills regularly; limit tool scope to what you need.
@@ -65,8 +69,9 @@ We collect only:
 • CPU architecture (e.g., x86_64, arm64)
 • GPU availability (detected, not detailed specs)
 
-No personal data collected! No files, no credentials, no identifiable information.
-This helps us understand CoPaw's usage environment and prioritize improvements.
+No personal data collected! No files, no credentials, no identifiable
+information. This helps us understand CoPaw's usage environment and
+prioritize improvements.
 """
 
 
@@ -132,7 +137,8 @@ DEFAULT_HEARTBEAT_MDS = {
     "--accept-security",
     "accept_security",
     is_flag=True,
-    help="Skip security confirmation (use with --defaults for scripts/Docker).",
+    help="Skip security confirmation (use with --defaults "
+    "for scripts/Docker).",
 )
 # pylint: disable=too-many-branches,too-many-statements
 def init_cmd(
@@ -161,12 +167,14 @@ def init_cmd(
         )
     else:
         accepted = prompt_confirm(
-            "Have you read and accepted the security notice above? (yes to continue, no to abort)",
+            "Have you read and accepted the security notice above? "
+            "(yes to continue, no to abort)",
             default=True,
         )
         if not accepted:
             click.echo(
-                "Initialization aborted. Read the security notice and run again when ready.",
+                "Initialization aborted. Read the security notice "
+                "and run again when ready.",
             )
             raise click.Abort()
     working_dir.mkdir(parents=True, exist_ok=True)
@@ -291,7 +299,8 @@ def init_cmd(
         if not use_defaults:
             audio_mode = prompt_choice(
                 "Select audio mode for voice messages:\n"
-                "  auto   - transcribe if provider available, else file placeholder\n"
+                "  auto   - transcribe if provider available, "
+                "else file placeholder\n"
                 "  native - send audio directly to model (needs ffmpeg)\n"
                 "Audio mode:",
                 options=["auto", "native"],

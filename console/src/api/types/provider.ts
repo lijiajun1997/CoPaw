@@ -41,7 +41,7 @@ export interface ModelSlotConfig {
   provider_id: string;
   model: string;
   fallback_models?: ModelSlotConfig[];
-  max_retries?: number;
+  max_retries_per_model?: number;
 }
 
 export interface ActiveModelsInfo {

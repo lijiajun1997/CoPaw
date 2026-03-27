@@ -118,7 +118,8 @@ class ChatManager:
                     existing.updated_at = datetime.now(timezone.utc)
                     await self._repo.upsert_chat(existing)
                     logger.debug(
-                        f"get_or_create_chat: Updated chat meta: {existing.id}"
+                        f"get_or_create_chat: Updated chat "
+                        f"meta: {existing.id}",
                     )
                 logger.debug(
                     f"get_or_create_chat: Found existing chat: {existing.id}",

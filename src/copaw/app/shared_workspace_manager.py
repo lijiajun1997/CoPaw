@@ -40,7 +40,8 @@ class SharedWorkspaceManager:
 
     Features:
     - Single shared Workspace instance for all users
-    - Per-user file space isolation (users/{user_id}/files, users/{user_id}/tasks)
+    - Per-user file space isolation
+        (users/{user_id}/files, users/{user_id}/tasks)
     - Thread-safe user space creation
     - User context injection for agent prompts
     - Caching for improved performance
@@ -55,11 +56,13 @@ class SharedWorkspaceManager:
         self.workspace_dir = Path(workspace_dir).expanduser()
         self.workspace: Optional[Workspace] = None
         self._lock = asyncio.Lock()
-        self._user_spaces: Dict[str, Path] = {}  # user_id -> user_space_path cache
-        self._user_context_cache: Dict[str, Dict[str, str]] = {}  # user_id -> context cache
+        self._user_spaces: Dict[str, Path] = {}
+        # user_id -> user_space_path cache
+        self._user_context_cache: Dict[str, Dict[str, str]] = {}
+        # user_id -> context cache
 
         logger.debug(
-            f"SharedWorkspaceManager initialized for: {self.workspace_dir}"
+            f"SharedWorkspaceManager initialized for: {self.workspace_dir}",
         )
 
     async def get_or_create_workspace(self) -> Workspace:
@@ -87,7 +90,9 @@ class SharedWorkspaceManager:
             try:
                 await instance.start()
                 self.workspace = instance
-                logger.info("Shared workspace created and started successfully")
+                logger.info(
+                    "Shared workspace created and started successfully",
+                )
                 return self.workspace
             except Exception as e:
                 logger.error(f"Failed to start shared workspace: {e}")

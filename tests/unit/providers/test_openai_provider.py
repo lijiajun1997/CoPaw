@@ -249,10 +249,11 @@ async def test_update_config_updates_chat_model_for_custom_provider() -> None:
     assert info.chat_model == "AnotherChatModel"
 
 
-async def test_update_config_updates_base_url_regardless_of_freeze_url() -> None:
+async def test_update_config_updates_base_url_with_freeze() -> None:
     """Test that base_url can be updated even when freeze_url is True.
 
-    Note: freeze_url restriction was removed to allow free base URL configuration.
+    Note: freeze_url restriction was removed to allow free
+    base URL configuration.
     """
     provider = _make_provider()
     provider.freeze_url = True

@@ -362,6 +362,8 @@ class ChannelManager:
             payload,
         )
 
+    # pylint: disable=too-many-branches,too-many-statements
+    # pylint: disable=too-many-nested-blocks
     async def _consume_channel_loop(
         self,
         channel_id: str,
@@ -653,6 +655,7 @@ class ChannelManager:
                     return ch
             return None
 
+    # pylint: disable=too-many-branches
     async def replace_channel(
         self,
         new_channel: BaseChannel,

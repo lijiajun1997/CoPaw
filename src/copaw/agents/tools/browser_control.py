@@ -46,9 +46,10 @@ def _resolve_output_path(path: str) -> str:
     return str(base_dir / path)
 
 
-# Hybrid mode detection: Windows + Uvicorn reload mode requires sync Playwright
-# to avoid NotImplementedError with asyncio.create_subprocess_exec.
-# On other platforms or without reload, use async Playwright for better performance.
+# Hybrid mode detection: Windows + Uvicorn reload mode requires
+# sync Playwright to avoid NotImplementedError with
+# asyncio.create_subprocess_exec. On other platforms or without
+# reload, use async Playwright for better performance.
 _USE_SYNC_PLAYWRIGHT = (
     sys.platform == "win32" and os.environ.get("COPAW_RELOAD_MODE") == "1"
 )
@@ -76,7 +77,8 @@ if _USE_SYNC_PLAYWRIGHT:
 else:
 
     async def _run_sync(func, *args, **kwargs):
-        """Fallback: directly call async function (should not be used in async mode)."""
+        """Fallback: directly call async function.
+        (should not be used in async mode)."""
         return await func(*args, **kwargs)
 
 
@@ -94,13 +96,13 @@ _state: dict[str, Any] = {
     "pending_file_choosers": {},  # page_id -> FileChooser list
     "headless": True,
     "current_page_id": None,
-    "page_counter": 0,  # monotonic counter for page_N ids, avoids reuse after close
-    "last_activity_time": 0.0,  # monotonic timestamp of last browser activity
-    "_idle_task": None,  # background asyncio.Task for idle watchdog
-    "_last_browser_error": None,  # message when launch failed (for user-facing error)
-    "_sync_browser": None,  # sync browser handle for hybrid mode
-    "_sync_context": None,  # sync context handle for hybrid mode
-    "_sync_playwright": None,  # sync playwright handle for hybrid mode
+    "page_counter": 0,  # monotonic counter for page_N ids
+    "last_activity_time": 0.0,  # monotonic timestamp
+    "_idle_task": None,  # background asyncio.Task
+    "_last_browser_error": None,  # message when launch failed
+    "_sync_browser": None,  # sync browser handle
+    "_sync_context": None,  # sync context handle
+    "_sync_playwright": None,  # sync playwright handle
 }
 
 # Stop the browser after this many seconds of inactivity (default 30 minutes).
@@ -143,7 +145,8 @@ def _reset_browser_state() -> None:
 
 
 async def _idle_watchdog(idle_seconds: float = _BROWSER_IDLE_TIMEOUT) -> None:
-    """Background task: stop the browser after it has been idle for *idle_seconds*.
+    """Background task: stop the browser after it has been
+    idle for *idle_seconds*.
 
     This reclaims Chrome renderer processes that accumulate when pages are
     opened during agent tasks but never explicitly closed.
@@ -156,7 +159,8 @@ async def _idle_watchdog(idle_seconds: float = _BROWSER_IDLE_TIMEOUT) -> None:
             idle = time.monotonic() - _state.get("last_activity_time", 0.0)
             if idle >= idle_seconds:
                 logger.info(
-                    "Browser idle for %.0fs (limit %.0fs), stopping to release resources",
+                    "Browser idle for %.0fs (limit %.0fs), "
+                    "stopping to release resources",
                     idle,
                     idle_seconds,
                 )
@@ -222,10 +226,11 @@ def _ensure_playwright_async():
         return async_playwright
     except ImportError as exc:
         raise ImportError(
-            "Playwright not installed. Use the same Python that runs CoPaw (e.g. "
-            "activate your venv or use 'uv run'): "
-            f"'{sys.executable}' -m pip install playwright && "
-            f"'{sys.executable}' -m playwright install",
+            "Playwright not installed. Use the same Python "
+            "that runs CoPaw (e.g. activate your venv or use "
+            "'uv run'): "
+            f"'{sys.executable}' -m pip install playwright "
+            f"&& '{sys.executable}' -m playwright install",
         ) from exc
 
 
@@ -237,10 +242,11 @@ def _ensure_playwright_sync():
         return sync_playwright
     except ImportError as exc:
         raise ImportError(
-            "Playwright not installed. Use the same Python that runs CoPaw (e.g. "
-            "activate your venv or use 'uv run'): "
-            f"'{sys.executable}' -m pip install playwright && "
-            f"'{sys.executable}' -m playwright install",
+            "Playwright not installed. Use the same Python "
+            "that runs CoPaw (e.g. activate your venv or use "
+            "'uv run'): "
+            f"'{sys.executable}' -m pip install playwright "
+            f"&& '{sys.executable}' -m playwright install",
         ) from exc
 
 
@@ -758,7 +764,8 @@ async def _ensure_browser() -> bool:  # pylint: disable=too-many-branches
             # Standard mode: use async Playwright
             async_playwright = _ensure_playwright_async()
             pw = await async_playwright().start()
-            # Prefer OS default browser when available (e.g. user's default Chrome/Safari).
+            # Prefer OS default browser when available
+            # (e.g. user's default Chrome/Safari).
             use_default = not is_running_in_container() and os.environ.get(
                 "COPAW_BROWSER_USE_DEFAULT",
                 "1",
@@ -852,7 +859,8 @@ async def _action_start(
                     indent=2,
                 ),
             )
-    # Default: headless (background). Only headed=True (e.g. browser_visible skill) shows window.
+    # Default: headless (background). Only headed=True
+    # (e.g. browser_visible skill) shows window.
     _state["headless"] = not headed
 
     try:
@@ -2109,7 +2117,10 @@ async def _action_install() -> ToolResponse:
             json.dumps(
                 {
                     "ok": True,
-                    "message": "On macOS using Safari (WebKit); no browser download needed.",
+                    "message": (
+                        "On macOS using Safari (WebKit); "
+                        "no browser download needed."
+                    ),
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -2129,8 +2140,11 @@ async def _action_install() -> ToolResponse:
             json.dumps(
                 {
                     "ok": False,
-                    "error": "Browser install timed out (10 min). Run manually in terminal: "
-                    f"{sys.executable!s} -m playwright install",
+                    "error": (
+                        "Browser install timed out (10 min). "
+                        "Run manually in terminal: "
+                        f"{sys.executable!s} -m playwright install"
+                    ),
                 },
                 ensure_ascii=False,
                 indent=2,

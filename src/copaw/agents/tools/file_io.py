@@ -10,7 +10,11 @@ from agentscope.tool import ToolResponse
 
 from ...constant import WORKING_DIR
 from ...config.context import get_current_workspace_dir
-from .utils import truncate_file_output, read_file_safe, check_workspace_restriction
+from .utils import (
+    truncate_file_output,
+    read_file_safe,
+    check_workspace_restriction,
+)
 
 
 def _resolve_file_path(file_path: str) -> str:
@@ -73,7 +77,10 @@ async def read_file(  # pylint: disable=too-many-return-statements
                 content=[
                     TextBlock(
                         type="text",
-                        text=f"Error: start_line must be an integer, got {start_line!r}.",
+                        text=(
+                            f"Error: start_line must be an integer, "
+                            f"got {start_line!r}."
+                        ),
                     ),
                 ],
             )
@@ -86,7 +93,10 @@ async def read_file(  # pylint: disable=too-many-return-statements
                 content=[
                     TextBlock(
                         type="text",
-                        text=f"Error: end_line must be an integer, got {end_line!r}.",
+                        text=(
+                            f"Error: end_line must be an integer, "
+                            f"got {end_line!r}."
+                        ),
                     ),
                 ],
             )
@@ -139,7 +149,10 @@ async def read_file(  # pylint: disable=too-many-return-statements
                 content=[
                     TextBlock(
                         type="text",
-                        text=f"Error: start_line {s} exceeds file length ({total} lines).",
+                        text=(
+                            f"Error: start_line {s} exceeds file "
+                            f"length ({total} lines)."
+                        ),
                     ),
                 ],
             )
@@ -168,8 +181,9 @@ async def read_file(  # pylint: disable=too-many-return-statements
         if text == selected_content and e < total:
             remaining = total - e
             text = (
-                f"{file_path}  (lines {s}-{e} of {total})\n{text}\n\n"
-                f"[{remaining} more lines. Use start_line={e + 1} to continue.]"
+                f"{file_path}  (lines {s}-{e} of {total})\n"
+                f"{text}\n\n[{remaining} more lines. "
+                f"Use start_line={e + 1} to continue.]"
             )
 
         return ToolResponse(
@@ -325,7 +339,10 @@ async def edit_file(
             content=[
                 TextBlock(
                     type="text",
-                    text=f"Error: The text to replace was not found in {file_path}.",
+                    text=(
+                        f"Error: The text to replace was not "
+                        f"found in {file_path}."
+                    ),
                 ),
             ],
         )

@@ -23,8 +23,10 @@ from ..providers.models import ModelSlotConfig
 class MultiUserMode(str, Enum):
     """Multi-user operation mode.
 
-    - MULTI_AGENT: Each user has their own Agent instance with complete isolation
-    - SHARED_AGENT: All users share one Agent, but have isolated file spaces
+    - MULTI_AGENT: Each user has their own Agent instance
+      with complete isolation
+    - SHARED_AGENT: All users share one Agent, but have
+      isolated file spaces
     """
 
     MULTI_AGENT = "multi_agent"
@@ -885,8 +887,9 @@ class SkillScannerConfig(BaseModel):
 class WorkspaceRestrictionConfig(BaseModel):
     """Workspace restriction settings under ``security.workspace_restriction``.
 
-    When enabled, agent tools can only access files within their own workspace
-    directory. Accessing files outside the workspace requires explicit permission.
+    When enabled, agent tools can only access files within their
+    own workspace directory. Accessing files outside the workspace
+    requires explicit permission.
     """
 
     enabled: bool = Field(
@@ -935,7 +938,8 @@ class Config(BaseModel):
         description=(
             "Multi-user operation mode. "
             "'multi_agent': each user has their own Agent instance; "
-            "'shared_agent': all users share one Agent with isolated file spaces."
+            "'shared_agent': all users share one Agent with "
+            "isolated file spaces."
         ),
     )
 

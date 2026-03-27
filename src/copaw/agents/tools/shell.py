@@ -255,10 +255,10 @@ async def execute_shell_command(
 
             except asyncio.TimeoutError:
                 stderr_suffix = (
-                    f"⚠️ TimeoutError: The command execution exceeded "
-                    f"the timeout of {timeout} seconds. "
-                    f"Please consider increasing the timeout value if this command "
-                    f"requires more time to complete."
+                    f"⚠️ TimeoutError: The command execution "
+                    f"exceeded the timeout of {timeout} seconds. "
+                    f"Please consider increasing the timeout value "
+                    f"if this command requires more time to complete."
                 )
                 returncode = -1
                 try:

@@ -51,8 +51,10 @@ class PromptBuilder:
 
         Args:
             working_dir: Directory containing markdown configuration files
-            enabled_files: List of filenames to load (if None, uses default order)
-            heartbeat_enabled: Whether heartbeat is enabled, affects AGENTS.md content
+            enabled_files: List of filenames to load
+                (if None, uses default order)
+            heartbeat_enabled: Whether heartbeat is enabled,
+                affects AGENTS.md content
         """
         self.working_dir = working_dir
         self.enabled_files = enabled_files
@@ -115,7 +117,8 @@ class PromptBuilder:
     def _process_heartbeat_section(self, content: str) -> str:
         """Process heartbeat section in AGENTS.md content.
 
-        - If heartbeat markers not found: keep content unchanged (backward compatibility)
+        - If heartbeat markers not found: keep content unchanged
+          (backward compatibility)
         - If heartbeat is enabled: keep the content but remove the markers
         - If heartbeat is disabled: remove the entire section
 
@@ -142,7 +145,8 @@ class PromptBuilder:
     def build(self) -> str:
         """Build the system prompt from markdown files.
 
-        All files are optional. If no files can be loaded, returns the default prompt.
+        All files are optional. If no files can be loaded,
+        returns the default prompt.
 
         Returns:
             Constructed system prompt string
@@ -186,38 +190,45 @@ def build_system_prompt_from_working_dir(
     """
     Build system prompt by reading markdown files from working directory.
 
-    This function constructs the system prompt by loading markdown files from
-    the specified working directory (workspace_dir for multi-agent setup).
-    These files define the agent's behavior, personality, and operational guidelines.
+    This function constructs the system prompt by loading markdown
+    files from the specified working directory (workspace_dir for
+    multi-agent setup). These files define the agent's behavior,
+    personality, and operational guidelines.
 
-    The files to load are determined by the enabled_files parameter or
-    agents.system_prompt_files configuration. If not configured, falls back to
-    default files:
+    The files to load are determined by the enabled_files parameter
+    or agents.system_prompt_files configuration. If not configured,
+    falls back to default files:
     - AGENTS.md - Detailed workflows, rules, and guidelines
     - SOUL.md - Core identity and behavioral principles
     - PROFILE.md - Agent identity and user profile
 
-    All files are optional. If a file doesn't exist or can't be read, it will be
-    skipped. If no files can be loaded, returns the default prompt.
+    All files are optional. If a file doesn't exist or can't be read,
+    it will be skipped. If no files can be loaded, returns the default.
 
     Args:
         working_dir: Directory to read markdown files from (if None, uses
             global WORKING_DIR for backward compatibility)
-        enabled_files: List of filenames to load (if None, uses config or defaults)
-        agent_id: Agent identifier to include in system prompt (optional)
-        heartbeat_enabled: Whether heartbeat is enabled. When False, filters
-            heartbeat section from AGENTS.md to avoid confusing instructions.
+        enabled_files: List of filenames to load
+            (if None, uses config or defaults)
+        agent_id: Agent identifier to include in system prompt
+            (optional)
+        heartbeat_enabled: Whether heartbeat is enabled. When False,
+            filters heartbeat section from AGENTS.md to avoid
+            confusing instructions.
         user_id: Current user ID (for shared agent mode)
-        user_space_dir: User's file space directory (for shared agent mode)
-        users_root: Root directory containing all user spaces (for shared agent mode)
+        user_space_dir: User's file space directory
+            (for shared agent mode)
+        users_root: Root directory containing all user spaces
+            (for shared agent mode)
 
     Returns:
         str: Constructed system prompt from markdown files.
-             If no files exist, returns the default prompt.
+            If no files exist, returns the default prompt.
 
     Example:
-        If working_dir contains AGENTS.md, SOUL.md and PROFILE.md, they will be combined:
-        "# AGENTS.md\\n\\n...\\n\\n# SOUL.md\\n\\n...\\n\\n# PROFILE.md\\n\\n..."
+        If working_dir contains AGENTS.md, SOUL.md and PROFILE.md,
+        they will be combined:
+        "# AGENTS.md\\n\\n...\\n\\n# SOUL.md\\n\\n..."
     """
     from ..constant import WORKING_DIR
     from ..config import load_config
@@ -260,16 +271,23 @@ def build_system_prompt_from_working_dir(
             f"- **Files Directory**: `{user_space_dir}/files/`\n"
             f"- **Tasks Directory**: `{user_space_dir}/tasks/`\n\n"
             f"## User Data Isolation Rules\n\n"
-            f"**IMPORTANT**: You are operating in a multi-user shared environment.\n\n"
-            f"1. **File Operations**: All files should be created in the user's space:\n"
+            f"**IMPORTANT**: You are operating in a multi-user "
+            f"shared environment.\n\n"
+            f"1. **File Operations**: All files should be created "
+            f"in the user's space:\n"
             f"   - User files go to: `{user_space_dir}/files/`\n"
             f"   - User tasks go to: `{user_space_dir}/tasks/`\n\n"
             f"2. **Privacy Protection**:\n"
-            f"   - You CAN see all user directories under `{users_root}`\n"
-            f"   - You MUST NOT share content between different users\n"
-            f"   - You MUST NOT send user A's files/data to user B\n\n"
-            f"3. **Task Generation**: When creating files for the user, always save to:\n"
-            f"   - `{user_space_dir}/tasks/` for generated task files\n\n"
+            f"   - You CAN see all user directories under "
+            f"`{users_root}`\n"
+            f"   - You MUST NOT share content between different "
+            f"users\n"
+            f"   - You MUST NOT send user A's files/data to "
+            f"user B\n\n"
+            f"3. **Task Generation**: When creating files for the "
+            f"user, always save to:\n"
+            f"   - `{user_space_dir}/tasks/` for generated task "
+            f"files\n\n"
         )
         prompt = user_isolation_header + prompt
 

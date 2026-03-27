@@ -171,7 +171,8 @@ def _resolve_search_root(
 # ---------------------------------------------------------------------------
 
 
-def _walk_and_grep(  # noqa: C901  pylint: disable=too-many-branches,too-many-locals,too-many-statements
+def _walk_and_grep(  # noqa: C901
+    # pylint: disable=too-many-branches,too-many-locals,too-many-statements
     search_root: Path,
     regex: "re.Pattern[str]",
     context_lines: int,
@@ -259,7 +260,10 @@ def _walk_and_grep(  # noqa: C901  pylint: disable=too-many-branches,too-many-lo
                 total_chars += 4
 
             if total_chars >= _MAX_OUTPUT_CHARS:
-                status = f"truncated: output size limit (~{_MAX_OUTPUT_CHARS // 1000}KB)"
+                status = (
+                    f"truncated: output size limit "
+                    f"(~{_MAX_OUTPUT_CHARS // 1000}KB)"
+                )
                 break
 
         if status != "ok":
@@ -388,14 +392,15 @@ async def grep_search(
         result = "\n".join(match_lines)
         if status == "timeout":
             result += (
-                f"\n\n(Partial results — search timed out after {_GREP_TIMEOUT}s. "
-                f"Try narrowing the search scope.)"
+                f"\n\n(Partial results — search timed out "
+                f"after {_GREP_TIMEOUT}s. Try narrowing the search scope.)"
             )
         elif status.startswith("truncated:"):
             reason = status.split(":", 1)[1].strip()
             result += (
                 f"\n\n(Results truncated due to {reason}. "
-                f"Try narrowing the search path or using a more specific pattern.)"
+                f"Try narrowing the search path or using a "
+                f"more specific pattern.)"
             )
 
     return _make_response(result)

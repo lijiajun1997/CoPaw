@@ -674,7 +674,8 @@ class ProviderManager:
         if provider_id in self.builtin_providers:
             return self.builtin_providers[provider_id]
         if provider_id in self.custom_providers:
-            # Check if custom provider needs hot reload for multi-worker support
+            # Check if custom provider needs hot reload
+            # for multi-worker support
             self._reload_custom_provider_if_changed(provider_id)
             return self.custom_providers.get(provider_id)
         return None
@@ -1110,7 +1111,8 @@ class ProviderManager:
                     self.custom_providers[provider_id] = provider
                     self._custom_provider_mtimes[provider_id] = current_mtime
                     logger.info(
-                        "Hot-reloaded custom provider '%s' from disk (multi-worker sync)",
+                        "Hot-reloaded custom provider '%s' from disk "
+                        "(multi-worker sync)",
                         provider_id,
                     )
         except Exception as e:

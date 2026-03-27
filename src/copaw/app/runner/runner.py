@@ -347,8 +347,8 @@ class AgentRunner(Runner):
                     "user_id": user_id,
                     "channel": channel,
                     "agent_id": self.agent_id,
-                    "user_space_dir": user_space_dir,
-                    "users_root": users_root,
+                    "user_space_dir": user_space_dir or "",
+                    "users_root": users_root or "",
                     **(
                         {
                             "forced_tool_call_json": json.dumps(
@@ -407,7 +407,7 @@ class AgentRunner(Runner):
                                 f"用户ID是 {user_id}。"
                                 f"此信息来自飞书消息元数据，请直接使用此名称称呼用户。"
                             ),
-                        }
+                        },
                     ],
                 )
                 msgs = [sender_hint] + list(msgs)

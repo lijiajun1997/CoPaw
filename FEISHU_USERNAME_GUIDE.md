@@ -35,7 +35,7 @@ feishu recv from=张三#5678 (张三) chat=oc_xxx msg_id=om_xxx type=text text_l
 
 要获取用户姓名，需要在飞书开放平台配置以下权限：
 
-**权限名称：** `contact:user.base:readonly`
+**权限名称：** `contact:contact.base:readonly`（或 `contact:contact:readonly_as_app`）
 
 **权限说明：** 获得获取用户基本信息权限
 
@@ -56,7 +56,7 @@ feishu recv from=张三#5678 (张三) chat=oc_xxx msg_id=om_xxx type=text text_l
    - 进入你的应用 → 权限管理
 
 3. **添加权限**
-   - 搜索：`contact:user.base:readonly`
+   - 搜索：`contact:contact.base:readonly`
    - 或者在「获取用户基本信息」分类中找到
    - 点击添加权限
 

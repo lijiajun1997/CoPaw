@@ -33,7 +33,10 @@ class SessionTaskInfo:
         """Get elapsed time since task started."""
         return time.time() - self.started_at
 
-    def is_timed_out(self, timeout_seconds: float = DEFAULT_SESSION_TIMEOUT_SECONDS) -> bool:
+    def is_timed_out(
+        self,
+        timeout_seconds: float = DEFAULT_SESSION_TIMEOUT_SECONDS,
+    ) -> bool:
         """Check if task has exceeded timeout."""
         return self.elapsed_seconds() > timeout_seconds
 
@@ -47,7 +50,10 @@ class SessionTaskRegistry:
     - Batch cleanup of stale tasks
     """
 
-    def __init__(self, timeout_seconds: float = DEFAULT_SESSION_TIMEOUT_SECONDS):
+    def __init__(
+        self,
+        timeout_seconds: float = DEFAULT_SESSION_TIMEOUT_SECONDS,
+    ):
         self._tasks: dict[str, SessionTaskInfo] = {}
         self._lock = asyncio.Lock()
         self._timeout_seconds = timeout_seconds
@@ -75,7 +81,8 @@ class SessionTaskRegistry:
             existing = self._tasks.get(session_id)
             if existing and not existing.task.done():
                 logger.warning(
-                    "Registering new task for session %s, cancelling existing task",
+                    "Registering new task for session %s, "
+                    "cancelling existing task",
                     session_id,
                 )
                 existing.task.cancel()
@@ -152,7 +159,9 @@ class SessionTaskRegistry:
         async with self._lock:
             timed_out = []
             for session_id, info in self._tasks.items():
-                if not info.task.done() and info.is_timed_out(self._timeout_seconds):
+                if not info.task.done() and info.is_timed_out(
+                    self._timeout_seconds,
+                ):
                     timed_out.append(session_id)
             return timed_out
 
@@ -165,7 +174,9 @@ class SessionTaskRegistry:
         async with self._lock:
             cancelled = []
             for session_id, info in list(self._tasks.items()):
-                if not info.task.done() and info.is_timed_out(self._timeout_seconds):
+                if not info.task.done() and info.is_timed_out(
+                    self._timeout_seconds,
+                ):
                     logger.warning(
                         "Session %s timed out after %.1f seconds, cancelling",
                         session_id,
@@ -326,11 +337,7 @@ def get_running_sessions() -> list[str]:
     Returns:
         List of session IDs with active tasks
     """
-    return [
-        sid
-        for sid, task in _session_tasks.items()
-        if not task.done()
-    ]
+    return [sid for sid, task in _session_tasks.items() if not task.done()]
 
 
 def get_task_for_session(session_id: str) -> Optional[asyncio.Task]:

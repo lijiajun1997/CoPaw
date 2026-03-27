@@ -36,7 +36,7 @@ feishu recv from=张三#5678 (张三) chat=oc_xxx msg_id=om_xxx type=text text_l
 
 ### 必需权限
 
-**权限名称：** `contact:user.base:readonly`
+**权限名称：** `contact:contact.base:readonly`（或 `contact:contact:readonly_as_app`）
 
 **权限等级：** 普通权限
 
@@ -166,7 +166,7 @@ async def log_user_action(content, action):
 
 ## 注意事项
 
-1. **权限配置：** 必须在飞书开放平台配置 `contact:user.base:readonly` 权限
+1. **权限配置：** 必须在飞书开放平台配置 `contact:contact.base:readonly` 权限
 2. **兼容性：** 向后兼容，不影响现有功能
 3. **性能：** 用户名缓存会占用内存，但影响很小
 4. **隐私：** 用户名仅用于日志和 Agent 上下文，不会被共享

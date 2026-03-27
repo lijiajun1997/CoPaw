@@ -244,7 +244,9 @@ class FeishuChannel(BaseChannel):
         try:
             if self._contacts_cache_file.exists():
                 with open(
-                    self._contacts_cache_file, "r", encoding="utf-8"
+                    self._contacts_cache_file,
+                    "r",
+                    encoding="utf-8",
                 ) as f:
                     data = json.load(f)
                     self._contacts_map = data.get("contacts", {})
@@ -268,7 +270,9 @@ class FeishuChannel(BaseChannel):
                         exist_ok=True,
                     )
                     with open(
-                        self._contacts_cache_file, "w", encoding="utf-8"
+                        self._contacts_cache_file,
+                        "w",
+                        encoding="utf-8",
                     ) as f:
                         json.dump(
                             {
@@ -285,7 +289,8 @@ class FeishuChannel(BaseChannel):
                     )
                 except Exception as e:
                     logger.warning(
-                        "feishu failed to save contacts cache: %s", e
+                        "feishu failed to save contacts cache: %s",
+                        e,
                     )
 
             thread = threading.Thread(target=_save, daemon=True)
@@ -590,7 +595,8 @@ class FeishuChannel(BaseChannel):
 
             if data.get("code") != 0:
                 logger.info(
-                    "feishu get user info api error: open_id=%s code=%s msg=%s",
+                    "feishu get user info api error: "
+                    "open_id=%s code=%s msg=%s",
                     open_id[:20],
                     data.get("code"),
                     data.get("msg"),
@@ -612,7 +618,9 @@ class FeishuChannel(BaseChannel):
                 if val and isinstance(val, str) and val.strip():
                     name = val.strip()
                     logger.info(
-                        "feishu found user name from %s: %s", attr, name
+                        "feishu found user name from %s: %s",
+                        attr,
+                        name,
                     )
                     break
 
@@ -963,7 +971,8 @@ class FeishuChannel(BaseChannel):
                 "meta": meta,
             }
             logger.info(
-                "feishu recv from=%s (%s) chat=%s msg_id=%s type=%s text_len=%s",
+                "feishu recv from=%s (%s) chat=%s msg_id=%s "
+                "type=%s text_len=%s",
                 sender_display[:40],
                 nickname[:30] if nickname else "N/A",
                 chat_id[:20] if chat_id else "",

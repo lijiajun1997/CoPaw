@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """Integration tests for multi-user mode switching.
 
-Tests the complete flow of switching between MULTI_AGENT and SHARED_AGENT modes.
+Tests the complete flow of switching between MULTI_AGENT
+and SHARED_AGENT modes.
 """
 from __future__ import annotations
 
@@ -85,7 +86,8 @@ class TestModeSwitching:
         self,
         multi_agent_config: Config,
     ) -> None:
-        """Test MULTI_AGENT mode creates separate workspaces for different users."""
+        """Test MULTI_AGENT mode creates separate workspaces
+        for different users."""
         manager = MultiAgentManager()
 
         with patch(
@@ -93,7 +95,7 @@ class TestModeSwitching:
             return_value=multi_agent_config,
         ):
             with patch(
-                "copaw.app.multi_agent_manager.Workspace"
+                "copaw.app.multi_agent_manager.Workspace",
             ) as MockWorkspace:
                 # Mock workspace creation
                 mock_ws1 = MagicMock()

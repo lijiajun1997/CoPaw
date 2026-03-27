@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# pylint: disable=protected-access,use-implicit-booleaness-not-comparison
 """Tests for SharedWorkspaceManager."""
 from __future__ import annotations
 
@@ -28,7 +29,8 @@ class TestSharedWorkspaceManager:
         assert user_dir == tmp_path / "users" / "user123"
 
     def test_get_user_space_dir_sanitizes_user_id(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
     ) -> None:
         """Test user ID is sanitized for directory name."""
         manager = SharedWorkspaceManager(workspace_dir=tmp_path)
@@ -39,7 +41,8 @@ class TestSharedWorkspaceManager:
         assert "users" in str(user_dir)
 
     def test_ensure_user_space_creates_directories(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
     ) -> None:
         """Test ensure_user_space creates required directories."""
         manager = SharedWorkspaceManager(workspace_dir=tmp_path)
@@ -128,7 +131,7 @@ class TestSharedWorkspaceManager:
         manager = SharedWorkspaceManager(workspace_dir=tmp_path)
 
         with patch(
-            "copaw.app.shared_workspace_manager.Workspace"
+            "copaw.app.shared_workspace_manager.Workspace",
         ) as MockWorkspace:
             mock_workspace = MagicMock()
             mock_workspace.start = AsyncMock()
@@ -145,7 +148,8 @@ class TestSharedWorkspaceManager:
 
     @pytest.mark.asyncio
     async def test_get_or_create_workspace_returns_existing(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
     ) -> None:
         """Test get_or_create_workspace returns existing workspace."""
         manager = SharedWorkspaceManager(workspace_dir=tmp_path)

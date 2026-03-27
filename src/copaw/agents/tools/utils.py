@@ -64,9 +64,10 @@ def check_workspace_restriction(
 
     # Path is outside workspace and not in allow_patterns
     return False, (
-        f"Access denied: Path '{resolved_path}' is outside your workspace directory "
-        f"'{workspace_dir}'. Workspace restriction is enabled. "
-        f"Please ask the administrator to grant permission for this path."
+        f"Access denied: Path '{resolved_path}' is outside "
+        f"your workspace directory '{workspace_dir}'. "
+        f"Workspace restriction is enabled. Please ask the "
+        f"administrator to grant permission for this path."
     )
 
 

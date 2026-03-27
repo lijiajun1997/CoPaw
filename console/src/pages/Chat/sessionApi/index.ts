@@ -245,8 +245,10 @@ const convertMessages = (
 
 const chatSpecToSession = (chat: ChatSpec): ExtendedSession => {
   // 从 meta 中提取发送者名称
-  const senderName = (chat.meta as Record<string, unknown>)?.feishu_sender_name as string | undefined;
-  const originalName = (chat as ChatSpec & { name?: string }).name || DEFAULT_SESSION_NAME;
+  const senderName = (chat.meta as Record<string, unknown>)
+    ?.feishu_sender_name as string | undefined;
+  const originalName =
+    (chat as ChatSpec & { name?: string }).name || DEFAULT_SESSION_NAME;
 
   // 如果有发送者名称，在 session 名称前加上发送者
   const displayName = senderName

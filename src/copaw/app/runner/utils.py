@@ -45,8 +45,10 @@ def build_env_context(
         channel: Current channel name
         working_dir: Working directory path
         add_hint: Whether to add hint context
-        user_space_dir: User's file space directory (for shared agent mode)
-        users_root: Root directory containing all user spaces (for shared agent mode)
+        user_space_dir: User's file space directory
+            (for shared agent mode)
+        users_root: Root directory containing all user spaces
+            (for shared agent mode)
     Returns:
         Formatted environment context string
     """

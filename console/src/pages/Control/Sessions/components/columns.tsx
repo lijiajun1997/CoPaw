@@ -35,9 +35,18 @@ const getAvatarText = (name: string): string => {
 /** 根据用户名生成稳定的颜色 */
 const getAvatarColor = (name: string): string => {
   const colors = [
-    "#f56a00", "#7265e6", "#ffbf00", "#00a2ae",
-    "#1890ff", "#52c41a", "#eb2f96", "#722ed1",
-    "#13c2c2", "#fa8c16", "#a0d911", "#2f54eb",
+    "#f56a00",
+    "#7265e6",
+    "#ffbf00",
+    "#00a2ae",
+    "#1890ff",
+    "#52c41a",
+    "#eb2f96",
+    "#722ed1",
+    "#13c2c2",
+    "#fa8c16",
+    "#a0d911",
+    "#2f54eb",
   ];
   if (!name) return colors[0];
   let hash = 0;
@@ -79,11 +88,26 @@ export const createColumns = (
                 {avatarText}
               </Avatar>
               <div style={{ overflow: "hidden" }}>
-                <div style={{ fontWeight: 500, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                <div
+                  style={{
+                    fontWeight: 500,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
                   {senderName}
                 </div>
                 <Tooltip title={userId}>
-                  <div style={{ fontSize: "12px", color: "#999", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div
+                    style={{
+                      fontSize: "12px",
+                      color: "#999",
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                    }}
+                  >
                     {userId.length > 12 ? `${userId.slice(0, 12)}...` : userId}
                   </div>
                 </Tooltip>
@@ -95,10 +119,16 @@ export const createColumns = (
         // 没有用户名时显示用户ID
         return (
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Avatar size="small" icon={<UserOutlined />} style={{ backgroundColor: "#ccc" }} />
+            <Avatar
+              size="small"
+              icon={<UserOutlined />}
+              style={{ backgroundColor: "#ccc" }}
+            />
             <Tooltip title={userId}>
               <span style={{ color: "#666" }}>
-                {userId.length > 15 ? `${userId.slice(0, 15)}...` : userId || "-"}
+                {userId.length > 15
+                  ? `${userId.slice(0, 15)}...`
+                  : userId || "-"}
               </span>
             </Tooltip>
           </div>

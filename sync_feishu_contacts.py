@@ -64,7 +64,10 @@ class FeishuContactSyncer:
             return self.user_access_token, "user"
 
         if self.app_id and self.app_secret:
-            url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
+            url = (
+                "https://open.feishu.cn/open-apis/auth/v3/"
+                "tenant_access_token/internal"
+            )
             try:
                 response = httpx.post(
                     url,
@@ -105,7 +108,7 @@ class FeishuContactSyncer:
             with open(CACHE_FILE, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             logger.info(
-                f"缓存已保存: {len(data.get('contacts', {}))} 个联系人 -> {CACHE_FILE}"
+                f"缓存已保存: {len(data.get('contacts', {}))} 个联系人 -> {CACHE_FILE}",
             )
             return True
         except Exception as e:

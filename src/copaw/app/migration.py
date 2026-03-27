@@ -73,12 +73,14 @@ def migrate_legacy_workspace_to_default_agent() -> bool:
 
     # Check if already migrated
     # Skip if:
-    # 1. Multiple agents already exist (multi-agent config), OR
+    # 1. Any agents already exist (multi-agent config), OR
     # 2. Default agent has agent.json (already migrated)
-    if len(config.agents.profiles) > 1:
+    if config.agents.profiles:
+        # Any existing profile means migration is not needed
         logger.debug(
             f"Multi-agent config already exists "
-            f"({len(config.agents.profiles)} agents), skipping migration",
+            f"({len(config.agents.profiles)} agents: "
+            f"{list(config.agents.profiles.keys())}), skipping migration",
         )
         return False
 

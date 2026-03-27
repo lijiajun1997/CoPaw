@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+# pylint: disable=protected-access
+# pylint: disable=use-implicit-booleaness-not-comparison,unused-argument
 """Tests for MultiAgentManager dual mode support."""
 from __future__ import annotations
 
@@ -21,7 +23,8 @@ class TestMultiAgentManagerDualMode:
         assert manager._shared_workspace_manager is None
 
     def test_get_shared_workspace_manager_none_when_not_shared(self) -> None:
-        """Test get_shared_workspace_manager returns None in MULTI_AGENT mode."""
+        """Test get_shared_workspace_manager returns None
+        in MULTI_AGENT mode."""
         manager = MultiAgentManager()
         assert manager.get_shared_workspace_manager() is None
 
@@ -146,7 +149,7 @@ class TestMultiAgentManagerSharedMode:
 
                 assert workspace is mock_workspace
                 mock_shared_manager.ensure_user_space.assert_called_with(
-                    "user123"
+                    "user123",
                 )
 
     @pytest.mark.asyncio

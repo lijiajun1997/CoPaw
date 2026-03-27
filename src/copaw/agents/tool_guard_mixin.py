@@ -352,6 +352,9 @@ class ToolGuardMixin:
                 ),
             }
 
+        # Check and inject pending user input messages
+        await self._check_and_inject_user_input()
+
         return result
 
     async def _decide_guard_action(
@@ -694,6 +697,51 @@ class ToolGuardMixin:
         return None
 
     # ------------------------------------------------------------------
+    # User input injection
+    # ------------------------------------------------------------------
+
+    async def _check_and_inject_user_input(self) -> None:
+        """Check and inject pending user input messages.
+
+        Called after tool call completion to check if user has sent
+        additional messages during task execution. If so, inject them
+        into agent memory for the next reasoning cycle.
+        """
+        session_id = self._request_context.get("session_id", "")
+        if not session_id:
+            return
+
+        from ..app.user_input_queue import get_user_input_queue
+        from .user_input_formatter import format_user_interrupt
+
+        queue = get_user_input_queue()
+
+        # Check if there are pending messages
+        if not await queue.has_pending(session_id):
+            return
+
+        # Dequeue the message
+        item = await queue.dequeue(session_id)
+        if not item:
+            return
+
+        # Get remaining count for hint
+        pending_count = await queue.get_pending_count(session_id)
+
+        # Format and inject
+        msg = format_user_interrupt(
+            content=item.content,
+            pending_count=pending_count,
+        )
+        await self.memory.add(msg)
+
+        logger.info(
+            "Injected user input for session %s: %s",
+            session_id[:16],
+            item.content[:50] + "..." if len(item.content) > 50 else item.content,
+        )
+
+    # ------------------------------------------------------------------
     # _reasoning override (guard-aware)
     # ------------------------------------------------------------------
 
@@ -721,6 +769,9 @@ class ToolGuardMixin:
 
         if self._last_tool_response_is_denied():
             return await self._emit_waiting_for_approval()
+
+        # Check and inject pending user input before reasoning
+        await self._check_and_inject_user_input()
 
         return await super()._reasoning(  # type: ignore[misc]
             tool_choice=tool_choice,
@@ -846,31 +897,21 @@ class ToolGuardMixin:
                 "(configurable in Security → Tool Guard / "
                 "File Guard settings)"
             )
-            hint_zh = (
-                "触发工具护栏 & 文件护栏"
-                + "（在安全-工具护栏 / 文件护栏页面"
-                + "可以更改设置）"
-            )
+            hint_zh = "触发工具护栏 & 文件护栏" + "（在安全-工具护栏 / 文件护栏页面" + "可以更改设置）"
         elif has_file:
             label = "File Guard / 文件护栏"
             hint_en = (
                 "Triggered by file guardrails "
                 "(configurable in Security → File Guard settings)"
             )
-            hint_zh = (
-                "触发文件护栏"
-                + "（在安全-文件护栏页面可以更改设置）"
-            )
+            hint_zh = "触发文件护栏" + "（在安全-文件护栏页面可以更改设置）"
         else:
             label = "Tool Guard / 工具护栏"
             hint_en = (
                 "Triggered by tool guardrails "
                 "(configurable in Security → Tool Guard settings)"
             )
-            hint_zh = (
-                "触发工具护栏"
-                "（在安全-工具护栏页面可以更改设置）"
-            )
+            hint_zh = "触发工具护栏（在安全-工具护栏页面可以更改设置）"
         return label, f"💡 {hint_en}\n💡 {hint_zh}"
 
     async def _emit_waiting_for_approval(self) -> Msg:

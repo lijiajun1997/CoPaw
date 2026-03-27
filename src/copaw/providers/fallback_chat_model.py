@@ -93,7 +93,8 @@ class FallbackChatModel(ChatModelBase):
                     provider = manager.get_provider(fallback.provider_id)
                     if provider is None:
                         logger.warning(
-                            f"Fallback provider '{fallback.provider_id}' not found, skipping",
+                            f"Fallback provider '{fallback.provider_id}' "
+                            f"not found, skipping",
                         )
                         continue
 
@@ -106,18 +107,21 @@ class FallbackChatModel(ChatModelBase):
                             generate_kwargs={"max_tokens": None},
                         )
                     else:
-                        model = provider.get_chat_model_instance(fallback.model)
+                        model = provider.get_chat_model_instance(
+                            fallback.model,
+                        )
 
                     self._fallback_models_cache.append(model)
                     models.append(model)
                     logger.info(
-                        f"Loaded fallback model: {fallback.provider_id}/{fallback.model}"
+                        f"Loaded fallback model: "
+                        f"{fallback.provider_id}/{fallback.model}",
                     )
 
                 except Exception as e:
                     logger.error(
-                        f"Failed to load fallback model {fallback.provider_id}/"
-                        f"{fallback.model}: {e}"
+                        f"Failed to load fallback model "
+                        f"{fallback.provider_id}/{fallback.model}: {e}",
                     )
 
         return models + self._fallback_models_cache
@@ -126,7 +130,10 @@ class FallbackChatModel(ChatModelBase):
         self,
         *args: Any,
         **kwargs: Any,
-    ) -> _model_response.ChatResponse | AsyncGenerator[_model_response.ChatResponse, None]:
+    ) -> (
+        _model_response.ChatResponse
+        | AsyncGenerator[_model_response.ChatResponse, None]
+    ):
         """Try models in order until one succeeds.
 
         Args:
@@ -149,7 +156,7 @@ class FallbackChatModel(ChatModelBase):
         last_exception: Optional[Exception] = None
 
         for model_idx, model in enumerate(models):
-            model_name = getattr(model, 'model_name', f'model_{model_idx}')
+            model_name = getattr(model, "model_name", f"model_{model_idx}")
             is_primary = model_idx == 0
 
             for attempt in range(1, max_retries + 1):
@@ -160,7 +167,8 @@ class FallbackChatModel(ChatModelBase):
                     if not is_primary:
                         logger.info(
                             f"✓ Fallback to {model_name} succeeded "
-                            f"(primary failed, model {model_idx + 1}/{len(models)})"
+                            f"(primary failed, model "
+                            f"{model_idx + 1}/{len(models)})",
                         )
 
                     # Handle streaming responses
@@ -182,8 +190,9 @@ class FallbackChatModel(ChatModelBase):
                     # Check if we should retry this model
                     if attempt < max_retries:
                         logger.warning(
-                            f"Model {model_name} failed (attempt {attempt}/"
-                            f"{max_retries}): {exc}. Retrying..."
+                            f"Model {model_name} failed "
+                            f"(attempt {attempt}/{max_retries}): "
+                            f"{exc}. Retrying...",
                         )
                         await asyncio.sleep(1)  # Brief delay before retry
                         continue
@@ -192,17 +201,19 @@ class FallbackChatModel(ChatModelBase):
                     if model_idx < len(models) - 1:
                         next_model_name = getattr(
                             models[model_idx + 1],
-                            'model_name',
-                            f'model_{model_idx + 1}',
+                            "model_name",
+                            f"model_{model_idx + 1}",
                         )
                         logger.warning(
-                            f"✗ Model {model_name} failed after {max_retries} attempts. "
-                            f"Switching to fallback: {next_model_name}"
+                            f"✗ Model {model_name} failed after "
+                            f"{max_retries} attempts. "
+                            f"Switching to fallback: {next_model_name}",
                         )
                     else:
                         logger.error(
-                            f"✗ All models failed ({len(models)} models total). "
-                            f"Last error from {model_name}: {exc}"
+                            f"✗ All models failed ({len(models)} "
+                            f"models total). Last error from "
+                            f"{model_name}: {exc}",
                         )
 
         # All models failed
@@ -237,7 +248,11 @@ class FallbackChatModel(ChatModelBase):
             Response chunks from the stream
         """
         current_model = all_models[current_model_idx]
-        model_name = getattr(current_model, 'model_name', f'model_{current_model_idx}')
+        model_name = getattr(
+            current_model,
+            "model_name",
+            f"model_{current_model_idx}",
+        )
 
         try:
             async for chunk in stream:
@@ -246,7 +261,7 @@ class FallbackChatModel(ChatModelBase):
         except Exception as exc:
             logger.warning(
                 f"Streaming from {model_name} failed: {exc}. "
-                f"Attempting fallback..."
+                f"Attempting fallback...",
             )
             await stream.aclose()
 
@@ -255,12 +270,14 @@ class FallbackChatModel(ChatModelBase):
                 next_model = all_models[next_model_idx]
                 next_model_name = getattr(
                     next_model,
-                    'model_name',
-                    f'model_{next_model_idx}',
+                    "model_name",
+                    f"model_{next_model_idx}",
                 )
 
                 if next_model_idx != current_model_idx:
-                    logger.info(f"Switching stream to fallback: {next_model_name}")
+                    logger.info(
+                        f"Switching stream to fallback: " f"{next_model_name}",
+                    )
 
                 for attempt in range(1, max_retries + 1):
                     try:
@@ -268,7 +285,7 @@ class FallbackChatModel(ChatModelBase):
 
                         if isinstance(result, AsyncGenerator):
                             logger.info(
-                                f"✓ Stream from {next_model_name} succeeded"
+                                f"✓ Stream from {next_model_name} succeeded",
                             )
                             async for chunk in result:
                                 yield chunk
@@ -277,7 +294,7 @@ class FallbackChatModel(ChatModelBase):
                     except Exception as retry_exc:
                         logger.warning(
                             f"Stream retry {attempt}/{max_retries} for "
-                            f"{next_model_name} failed: {retry_exc}"
+                            f"{next_model_name} failed: {retry_exc}",
                         )
                         await asyncio.sleep(1)
 

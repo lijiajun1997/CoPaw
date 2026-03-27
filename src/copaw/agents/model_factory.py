@@ -386,12 +386,11 @@ def create_model_and_formatter(
         )
 
         fallback_list = [
-            f"{fm.provider_id}/{fm.model}"
-            for fm in model_slot.fallback_models
+            f"{fm.provider_id}/{fm.model}" for fm in model_slot.fallback_models
         ]
         logger.info(
-            f"Model fallback enabled: primary={provider_id}/{model_slot.model}, "
-            f"fallbacks={fallback_list}"
+            f"Model fallback enabled: primary={provider_id}/"
+            f"{model_slot.model}, fallbacks={fallback_list}",
         )
 
     return wrapped_model, formatter

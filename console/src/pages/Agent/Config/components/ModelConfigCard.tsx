@@ -84,7 +84,7 @@ export function ModelConfigCard({
         provider_id: "",
         model: "",
         fallback_models: [],
-        max_retries: 3,
+        max_retries_per_model: 3,
       };
       onChange?.({
         ...current,
@@ -96,7 +96,7 @@ export function ModelConfigCard({
         provider_id: "",
         model: "",
         fallback_models: [],
-        max_retries: 3,
+        max_retries_per_model: 3,
       };
       const fallbacks = [...(current.fallback_models || [])];
       if (!fallbacks[index - 1]) {
@@ -104,7 +104,7 @@ export function ModelConfigCard({
           provider_id: "",
           model: "",
           fallback_models: [],
-          max_retries: 3,
+          max_retries_per_model: 3,
         };
       }
       fallbacks[index - 1] = {
@@ -136,14 +136,14 @@ export function ModelConfigCard({
       provider_id: "",
       model: "",
       fallback_models: [],
-      max_retries: 3,
+      max_retries_per_model: 3,
     };
     const fallbacks = [...(current.fallback_models || [])];
     fallbacks.push({
       provider_id: "",
       model: "",
       fallback_models: [],
-      max_retries: 3,
+      max_retries_per_model: 3,
     });
     onChange?.({
       ...current,
@@ -158,7 +158,7 @@ export function ModelConfigCard({
   ) => {
     const providerId = slot.provider_id;
     const modelId = slot.model;
-    const maxRetries = slot.max_retries ?? 3;
+    const maxRetries = slot.max_retries_per_model ?? 3;
 
     return (
       <div key={index} className={styles.modelSlot}>
@@ -222,7 +222,7 @@ export function ModelConfigCard({
               min={0}
               max={10}
               onChange={(val) =>
-                updateModelSlot(index, "max_retries", val ?? 3)
+                updateModelSlot(index, "max_retries_per_model", val ?? 3)
               }
               style={{ width: 120 }}
             />
@@ -246,7 +246,7 @@ export function ModelConfigCard({
     provider_id: "",
     model: "",
     fallback_models: [],
-    max_retries: 3,
+    max_retries_per_model: 3,
   };
   const fallbacks = current.fallback_models || [];
 
