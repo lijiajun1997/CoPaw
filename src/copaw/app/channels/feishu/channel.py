@@ -838,6 +838,7 @@ class FeishuChannel(BaseChannel):
                     url_or_path = await self._download_image_resource(
                         message_id,
                         img_key,
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -853,6 +854,7 @@ class FeishuChannel(BaseChannel):
                     url_or_path = await self._download_file_resource(
                         message_id,
                         file_key,
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -875,6 +877,7 @@ class FeishuChannel(BaseChannel):
                     url_or_path = await self._download_image_resource(
                         message_id,
                         image_key,
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -903,6 +906,7 @@ class FeishuChannel(BaseChannel):
                         message_id,
                         file_key,
                         filename_hint=file_name or "file.bin",
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -932,6 +936,7 @@ class FeishuChannel(BaseChannel):
                         message_id,
                         file_key,
                         filename_hint=file_name or "video.mp4",
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -955,6 +960,7 @@ class FeishuChannel(BaseChannel):
                         message_id,
                         file_key,
                         filename_hint="audio.opus",
+                        user_id=sender_id,
                     )
                     if url_or_path:
                         content_parts.append(
@@ -1072,12 +1078,50 @@ class FeishuChannel(BaseChannel):
         except Exception as e:
             logger.debug("feishu reaction error: %s", e)
 
+    def _get_user_media_dir(self, user_id: Optional[str] = None) -> Path:
+        """Get media directory for user (shared mode) or global media dir.
+
+        In SHARED_AGENT mode, returns user-specific files directory.
+        Otherwise returns the global _media_dir.
+
+        Args:
+            user_id: Feishu open_id of the user sending the file.
+
+        Returns:
+            Path to the directory where files should be saved.
+        """
+        if not user_id:
+            return self._media_dir
+
+        # Try to get user files dir from SharedWorkspaceManager
+        from ...multi_agent_manager import get_multi_agent_manager
+
+        manager = get_multi_agent_manager()
+        if manager:
+            user_files_dir = manager.get_user_files_dir(user_id)
+            if user_files_dir:
+                user_files_dir.mkdir(parents=True, exist_ok=True)
+                return user_files_dir
+
+        # Fallback to global media dir
+        return self._media_dir
+
     async def _download_image_resource(
         self,
         message_id: str,
         image_key: str,
+        user_id: Optional[str] = None,
     ) -> Optional[str]:
-        """Download image to media_dir using SDK; return local path or None."""
+        """Download image; in shared mode saves to user's files directory.
+
+        Args:
+            message_id: Feishu message ID.
+            image_key: Feishu image key for download.
+            user_id: Optional user ID for user-specific storage in shared mode.
+
+        Returns:
+            Local file path or None on failure.
+        """
         try:
             req = (
                 GetMessageResourceRequest.builder()
@@ -1104,9 +1148,14 @@ class FeishuChannel(BaseChannel):
                 "".join(c for c in image_key if c.isalnum() or c in "-_.")
                 or "img"
             )
-            self._media_dir.mkdir(parents=True, exist_ok=True)
-            path = self._media_dir / f"{message_id}_{safe_key}.{ext}"
+            media_dir = self._get_user_media_dir(user_id)
+            path = media_dir / f"{message_id}_{safe_key}.{ext}"
             await asyncio.to_thread(path.write_bytes, data)
+            logger.info(
+                "feishu image saved to %s (user_id=%s)",
+                path,
+                user_id or "N/A",
+            )
             return str(path)
         except Exception:
             logger.exception("feishu _download_image_resource failed")
@@ -1117,8 +1166,19 @@ class FeishuChannel(BaseChannel):
         message_id: str,
         file_key: str,
         filename_hint: str = "file.bin",
+        user_id: Optional[str] = None,
     ) -> Optional[str]:
-        """Download file to media_dir using SDK; return local path or None."""
+        """Download file; in shared mode saves to user's files directory.
+
+        Args:
+            message_id: Feishu message ID.
+            file_key: Feishu file key for download.
+            filename_hint: Suggested filename from message.
+            user_id: Optional user ID for user-specific storage in shared mode.
+
+        Returns:
+            Local file path or None on failure.
+        """
         try:
             req = (
                 GetMessageResourceRequest.builder()
@@ -1145,9 +1205,14 @@ class FeishuChannel(BaseChannel):
             if not filename.strip() or filename in ("file.bin", "video.mp4"):
                 ext = detect_file_ext(data, default="bin")
                 filename = f"file.{ext}"
-            self._media_dir.mkdir(parents=True, exist_ok=True)
-            path = self._media_dir / f"{message_id}_{filename}"
+            media_dir = self._get_user_media_dir(user_id)
+            path = media_dir / f"{message_id}_{filename}"
             await asyncio.to_thread(path.write_bytes, data)
+            logger.info(
+                "feishu file saved to %s (user_id=%s)",
+                path,
+                user_id or "N/A",
+            )
             return str(path)
         except Exception:
             logger.exception("feishu _download_file_resource failed")
