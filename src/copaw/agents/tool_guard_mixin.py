@@ -281,81 +281,83 @@ class ToolGuardMixin:
                     exc_info=True,
                 )
 
-        if action is not None:
-            return await self._execute_guard_action(action, tool_call)
-
-        # 执行工具调用，带超时保护
-        tool_name = str(tool_call.get("name", "unknown"))
         try:
-            result = await asyncio.wait_for(
-                super()._acting(tool_call),  # type: ignore[misc]
-                timeout=TOOL_CALL_TIMEOUT_SECONDS,
-            )
-        except asyncio.TimeoutError:
-            logger.warning(
-                "Tool call '%s' timed out after %s seconds",
-                tool_name,
-                TOOL_CALL_TIMEOUT_SECONDS,
-            )
-            # 返回超时错误信息给 LLM，让它继续判断处理
-            from agentscope.message import ToolResultBlock
+            if action is not None:
+                return await self._execute_guard_action(action, tool_call)
 
-            timeout_msg = Msg(
-                "tool",  # 工具结果必须使用 tool 角色
-                [
-                    ToolResultBlock(
-                        type="tool_result",
-                        id=tool_call.get("id", ""),
-                        name=tool_name,
-                        output=[
-                            {
-                                "type": "text",
-                                "text": (
-                                    f"⏰ 工具调用超时（"
-                                    f"{TOOL_CALL_TIMEOUT_SECONDS // 60} "
-                                    f"分钟）\n"
-                                    f"Tool '{tool_name}' timed out after "
-                                    f"{TOOL_CALL_TIMEOUT_SECONDS // 60} "
-                                    f"minutes.\n\n"
-                                    f"请尝试：\n"
-                                    f"1. 将任务拆分为更小的步骤\n"
-                                    f"2. 用其他方法完成任务\n"
-                                    f"3. 如需继续，告诉我下一步"
-                                    f"\n\n"
-                                    f"Please try:\n"
-                                    f"1. Break the task into smaller steps\n"
-                                    f"2. Use alternative methods\n"
-                                    f"3. Tell me the next step if you "
-                                    f"want to continue"
-                                ),
-                            },
-                        ],
+            # 执行工具调用，带超时保护
+            tool_name = str(tool_call.get("name", "unknown"))
+            try:
+                result = await asyncio.wait_for(
+                    super()._acting(tool_call),  # type: ignore[misc]
+                    timeout=TOOL_CALL_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Tool call '%s' timed out after %s seconds",
+                    tool_name,
+                    TOOL_CALL_TIMEOUT_SECONDS,
+                )
+                # 返回超时错误信息给 LLM，让它继续判断处理
+                from agentscope.message import ToolResultBlock
+
+                timeout_msg = Msg(
+                    "tool",  # 工具结果必须使用 tool 角色
+                    [
+                        ToolResultBlock(
+                            type="tool_result",
+                            id=tool_call.get("id", ""),
+                            name=tool_name,
+                            output=[
+                                {
+                                    "type": "text",
+                                    "text": (
+                                        f"⏰ 工具调用超时（"
+                                        f"{TOOL_CALL_TIMEOUT_SECONDS // 60} "
+                                        f"分钟）\n"
+                                        f"Tool '{tool_name}' timed out after "
+                                        f"{TOOL_CALL_TIMEOUT_SECONDS // 60} "
+                                        f"minutes.\n\n"
+                                        f"请尝试：\n"
+                                        f"1. 将任务拆分为更小的步骤\n"
+                                        f"2. 用其他方法完成任务\n"
+                                        f"3. 如需继续，告诉我下一步"
+                                        f"\n\n"
+                                        f"Please try:\n"
+                                        f"1. Break the task into smaller steps\n"
+                                        f"2. Use alternative methods\n"
+                                        f"3. Tell me the next step if you "
+                                        f"want to continue"
+                                    ),
+                                },
+                            ],
+                        ),
+                    ],
+                    "tool",  # role 必须是 tool
+                )
+                await self.print(timeout_msg, True)
+                await self.memory.add(timeout_msg)
+                return None
+
+            if getattr(self, "_tool_guard_forced_replay_active", False):
+                tool_name = str(tool_call.get("name", ""))
+                tool_input = tool_call.get("input", {})
+                self._tool_guard_forced_replay_active = False
+                self._tool_guard_replay_done = {
+                    "tool_name": tool_name,
+                    "tool_input": tool_input,
+                    "remaining_queue": getattr(
+                        self,
+                        "_tool_guard_replay_queue",
+                        [],
                     ),
-                ],
-                "tool",  # role 必须是 tool
-            )
-            await self.print(timeout_msg, True)
-            await self.memory.add(timeout_msg)
-            return None
+                }
 
-        if getattr(self, "_tool_guard_forced_replay_active", False):
-            tool_name = str(tool_call.get("name", ""))
-            tool_input = tool_call.get("input", {})
-            self._tool_guard_forced_replay_active = False
-            self._tool_guard_replay_done = {
-                "tool_name": tool_name,
-                "tool_input": tool_input,
-                "remaining_queue": getattr(
-                    self,
-                    "_tool_guard_replay_queue",
-                    [],
-                ),
-            }
-
-        # Check and inject pending user input messages
-        await self._check_and_inject_user_input()
-
-        return result
+            return result
+        finally:
+            # Always check and inject pending user input messages
+            # after every tool call completion
+            await self._check_and_inject_user_input()
 
     async def _decide_guard_action(
         self,
