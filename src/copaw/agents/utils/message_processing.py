@@ -74,16 +74,36 @@ async def _process_single_file_block(
 
 
 def _extract_source_and_filename(block: dict, block_type: str):
-    """Extract source and filename from a block."""
+    """Extract source and filename from a block.
+
+    Handles both formats:
+    - Content SDK: {"type": "file", "file_url": "...", "filename": "..."}
+    - AgentScope: {"type": "file", "source": {"type": "url", "url": "..."}}
+    """
+    filename = block.get("filename")
+
     if block_type == "file":
-        return block.get("source", {}), block.get("filename")
+        # Check for Content SDK format (file_url field)
+        file_url = block.get("file_url") or block.get("file_id")
+        if file_url:
+            source = {"type": "url", "url": file_url}
+            if not filename:
+                parsed = urllib.parse.urlparse(file_url)
+                filename = os.path.basename(parsed.path) or None
+            return source, filename
+
+        # Check for AgentScope format (source field)
+        source = block.get("source", {})
+        if isinstance(source, dict):
+            return source, filename
+
+        return {}, filename
 
     source = block.get("source", {})
     if not isinstance(source, dict):
         return None, None
 
-    filename = None
-    if source.get("type") == "url":
+    if not filename and source.get("type") == "url":
         url = source.get("url", "")
         if url:
             parsed = urllib.parse.urlparse(url)
