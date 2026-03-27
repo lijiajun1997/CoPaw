@@ -86,6 +86,10 @@ def _extract_source_and_filename(block: dict, block_type: str):
         # Check for Content SDK format (file_url field)
         file_url = block.get("file_url") or block.get("file_id")
         if file_url:
+            logger.debug(
+                "Extracted file_url from Content SDK format: %s",
+                file_url[:50] + "..." if len(file_url) > 50 else file_url,
+            )
             source = {"type": "url", "url": file_url}
             if not filename:
                 parsed = urllib.parse.urlparse(file_url)
@@ -95,8 +99,16 @@ def _extract_source_and_filename(block: dict, block_type: str):
         # Check for AgentScope format (source field)
         source = block.get("source", {})
         if isinstance(source, dict):
+            logger.debug(
+                "Extracted source from AgentScope format: %s",
+                source.get("url", source.get("type", "unknown")),
+            )
             return source, filename
 
+        logger.warning(
+            "File block missing both file_url and source: %s",
+            list(block.keys()),
+        )
         return {}, filename
 
     source = block.get("source", {})
@@ -423,6 +435,23 @@ async def process_file_and_media_blocks_in_message(msg) -> None:
 
         if not isinstance(message.content, list):
             continue
+
+        # Debug: log all block types in message
+        block_types = [
+            b.get("type") if isinstance(b, dict) else type(b).__name__
+            for b in message.content
+        ]
+        file_blocks = [
+            i for i, b in enumerate(message.content)
+            if isinstance(b, dict)
+            and b.get("type") in ("file", "image", "audio", "video")
+        ]
+        if file_blocks:
+            logger.debug(
+                "Processing message blocks: %s, file/media at: %s",
+                block_types,
+                file_blocks,
+            )
 
         downloaded_files = []
 
