@@ -6,7 +6,7 @@ Tests the complete flow of user message injection during agent task execution.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -16,13 +16,7 @@ from copaw.app.user_input_queue import (
     reset_user_input_queue,
 )
 from copaw.agents.user_input_formatter import format_user_interrupt
-from copaw.app.session_task_registry import (
-    SessionTaskRegistry,
-    register_session_task,
-    unregister_session_task,
-    is_session_running,
-    cancel_session_task,
-)
+from copaw.app.session_task_registry import SessionTaskRegistry
 
 
 class TestUserInterruptFlow:
@@ -37,8 +31,6 @@ class TestUserInterruptFlow:
     @pytest.fixture
     def registry(self) -> SessionTaskRegistry:
         """Create a fresh registry for each test."""
-        from copaw.app.session_task_registry import SessionTaskRegistry
-
         return SessionTaskRegistry()
 
     @pytest.mark.asyncio
@@ -238,7 +230,9 @@ class TestChannelIntegration:
             assert cmd.strip().lower().startswith("/stop"), f"Failed: {cmd}"
 
         for cmd in non_stop_commands:
-            assert not cmd.strip().lower().startswith("/stop"), f"Failed: {cmd}"
+            assert (
+                not cmd.strip().lower().startswith("/stop")
+            ), f"Failed: {cmd}"
 
 
 class TestEndToEndFlow:

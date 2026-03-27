@@ -599,7 +599,12 @@ class BaseChannel(ABC):
                 else:
                     await self.send_content_parts(
                         to_handle,
-                        [TextContent(type=ContentType.TEXT, text="无法停止任务，请稍后重试")],
+                        [
+                            TextContent(
+                                type=ContentType.TEXT,
+                                text="无法停止任务，请稍后重试",
+                            ),
+                        ],
                         send_meta,
                     )
                 return
@@ -607,7 +612,9 @@ class BaseChannel(ABC):
             # Enqueue user input for injection
             if user_input:
                 from ..user_input_queue import get_user_input_queue
-                from ...agents.user_input_formatter import format_user_interrupt_ack
+                from ...agents.user_input_formatter import (
+                    format_user_interrupt_ack,
+                )
 
                 queue = get_user_input_queue()
                 user_id = getattr(request, "user_id", "") or ""

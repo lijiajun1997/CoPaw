@@ -2,8 +2,6 @@
 """Tests for UserInputQueue service."""
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from copaw.app.user_input_queue import (
@@ -183,13 +181,19 @@ class TestUserInputQueue:
         assert await queue.has_pending(session_id) is False
 
     @pytest.mark.asyncio
-    async def test_clear_nonexistent_session(self, queue: UserInputQueue) -> None:
+    async def test_clear_nonexistent_session(
+        self,
+        queue: UserInputQueue,
+    ) -> None:
         """Test clear on nonexistent session returns 0."""
         count = await queue.clear("nonexistent-session")
         assert count == 0
 
     @pytest.mark.asyncio
-    async def test_multiple_sessions_isolated(self, queue: UserInputQueue) -> None:
+    async def test_multiple_sessions_isolated(
+        self,
+        queue: UserInputQueue,
+    ) -> None:
         """Test messages are isolated between sessions."""
         session1 = "session-1"
         session2 = "session-2"

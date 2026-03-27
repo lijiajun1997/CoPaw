@@ -2,8 +2,6 @@
 """Tests for user input formatting utilities."""
 from __future__ import annotations
 
-import pytest
-
 from copaw.agents.user_input_formatter import (
     format_user_interrupt,
     format_user_interrupt_ack,

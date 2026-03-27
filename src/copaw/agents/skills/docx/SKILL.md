@@ -1,486 +1,274 @@
 ---
-name: docx
-description: "Use this skill whenever the user wants to create, read, edit, or manipulate Word documents (.docx files). Triggers include: any mention of \"Word doc\", \"word document\", \".docx\", or requests to produce professional documents with formatting like tables of contents, headings, page numbers, or letterheads. Also use when extracting or reorganizing content from .docx files, inserting or replacing images in documents, performing find-and-replace in Word files, working with tracked changes or comments, or converting content into a polished Word document. If the user asks for a \"report\", \"memo\", \"letter\", \"template\", or similar deliverable as a Word or .docx file, use this skill. Do NOT use for PDFs, spreadsheets, Google Docs, or general coding tasks unrelated to document generation."
-license: Proprietary. LICENSE.txt has complete terms
-metadata: { "builtin_skill_version": "1.0" }
+name: minimax-docx
+license: MIT
+metadata:
+  version: "1.0.0"
+  category: document-processing
+  author: MiniMaxAI
+  sources:
+    - "ECMA-376 Office Open XML File Formats"
+    - "GB/T 9704-2012 Layout Standard for Official Documents"
+    - "IEEE / ACM / APA / MLA / Chicago / Turabian Style Guides"
+    - "Springer LNCS / Nature / HBR Document Templates"
+description: >
+  Professional DOCX document creation, editing, and formatting using OpenXML SDK (.NET).
+  Three pipelines: (A) create new documents from scratch, (B) fill/edit content in existing
+  documents, (C) apply template formatting with XSD validation gate-check.
+  MUST use this skill whenever the user wants to produce, modify, or format a Word document —
+  including when they say "write a report", "draft a proposal", "make a contract",
+  "fill in this form", "reformat to match this template", or any task whose final output
+  is a .docx file. Even if the user doesn't mention "docx" explicitly, if the task
+  implies a printable/formal document, use this skill.
+triggers:
+  - Word
+  - docx
+  - document
+  - 文档
+  - Word文档
+  - 报告
+  - 合同
+  - 公文
+  - 排版
+  - 套模板
 ---
 
-> **Important:** All `scripts/` paths are relative to this skill directory.
-> Run with: `cd {this_skill_dir} && python scripts/...`
-> Or use the `cwd` parameter of `execute_shell_command`.
+# minimax-docx
 
-# DOCX creation, editing, and analysis
+Create, edit, and format DOCX documents via CLI tools or direct C# scripts built on OpenXML SDK (.NET).
 
-## Prerequisites
+## Setup
 
-- **docx** (`npm install -g docx`): new document creation
-- **LibreOffice** (`soffice`): `.doc` -> `.docx` conversion, tracked-changes acceptance, and PDF export
-- **pandoc**: text extraction
-- **pdftoppm** (poppler-utils): document-to-image workflows
-- If `pdftoppm` is unavailable, a Python fallback path may use `pdf2image`.
-- On Windows, dependencies must be installed and available in `PATH`; if missing, report the dependency issue and stop (do not keep retrying).
+**First time:** `bash scripts/setup.sh` (or `powershell scripts/setup.ps1` on Windows, `--minimal` to skip optional deps).
 
-## Overview
+**First operation in session:** `scripts/env_check.sh` — do not proceed if `NOT READY`. (Skip on subsequent operations within the same session.)
 
-A .docx file is a ZIP archive containing XML files.
+## Quick Start: Direct C# Path
 
-## Quick Reference
+When the task requires structural document manipulation (custom styles, complex tables, multi-section layouts, headers/footers, TOC, images), write C# directly instead of wrestling with CLI limitations. Use this scaffold:
 
-| Task | Approach |
-|------|----------|
-| Read/analyze content | `pandoc` or unpack for raw XML |
-| Create new document | Use `docx-js` - see Creating New Documents below |
-| Edit existing document | Unpack → edit XML → repack - see Editing Existing Documents below |
+```csharp
+// File: scripts/dotnet/task.csx  (or a new .cs in a Console project)
+// dotnet run --project scripts/dotnet/MiniMaxAIDocx.Cli -- run-script task.csx
+#r "nuget: DocumentFormat.OpenXml, 3.2.0"
 
-### Converting .doc to .docx
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Wordprocessing;
 
-Legacy `.doc` files must be converted before editing:
+using var doc = WordprocessingDocument.Create("output.docx", WordprocessingDocumentType.Document);
+var mainPart = doc.AddMainDocumentPart();
+mainPart.Document = new Document(new Body());
+
+// --- Your logic here ---
+// Read the relevant Samples/*.cs file FIRST for tested patterns.
+// See Samples/ table in References section below.
+```
+
+**Before writing any C#, read the relevant `Samples/*.cs` file** — they contain compilable, SDK-version-verified patterns. The Samples table in the References section below maps topics to files.
+
+## CLI shorthand
+
+All CLI commands below use `$CLI` as shorthand for:
+```bash
+dotnet run --project scripts/dotnet/MiniMaxAIDocx.Cli --
+```
+
+## Pipeline routing
+
+Route by checking: does the user have an input .docx file?
+
+```
+User task
+├─ No input file → Pipeline A: CREATE
+│   signals: "write", "create", "draft", "generate", "new", "make a report/proposal/memo"
+│   → Read references/scenario_a_create.md
+│
+└─ Has input .docx
+    ├─ Replace/fill/modify content → Pipeline B: FILL-EDIT
+    │   signals: "fill in", "replace", "update", "change text", "add section", "edit"
+    │   → Read references/scenario_b_edit_content.md
+    │
+    └─ Reformat/apply style/template → Pipeline C: FORMAT-APPLY
+        signals: "reformat", "apply template", "restyle", "match this format", "套模板", "排版"
+        ├─ Template is pure style (no content) → C-1: OVERLAY (apply styles to source)
+        └─ Template has structure (cover/TOC/example sections) → C-2: BASE-REPLACE
+            (use template as base, replace example content with user content)
+        → Read references/scenario_c_apply_template.md
+```
+
+If the request spans multiple pipelines, run them sequentially (e.g., Create then Format-Apply).
+
+## Pre-processing
+
+Convert `.doc` → `.docx` if needed: `scripts/doc_to_docx.sh input.doc output_dir/`
+
+Preview before editing (avoids reading raw XML): `scripts/docx_preview.sh document.docx`
+
+Analyze structure for editing scenarios: `$CLI analyze --input document.docx`
+
+## Scenario A: Create
+
+Read `references/scenario_a_create.md`, `references/typography_guide.md`, and `references/design_principles.md` first. Pick an aesthetic recipe from `Samples/AestheticRecipeSamples.cs` that matches the document type — do not invent formatting values. For CJK, also read `references/cjk_typography.md`.
+
+**Choose your path:**
+- **Simple** (plain text, minimal formatting): use CLI — `$CLI create --type report --output out.docx --config content.json`
+- **Structural** (custom styles, multi-section, TOC, images, complex tables): write C# directly. Read the relevant `Samples/*.cs` first.
+
+CLI options: `--type` (report|letter|memo|academic), `--title`, `--author`, `--page-size` (letter|a4|legal|a3), `--margins` (standard|narrow|wide), `--header`, `--footer`, `--page-numbers`, `--toc`, `--content-json`.
+
+Then run the **validation pipeline** (below).
+
+## Scenario B: Edit / Fill
+
+Read `references/scenario_b_edit_content.md` first. Preview → analyze → edit → validate.
+
+**Choose your path:**
+- **Simple** (text replacement, placeholder fill): use CLI subcommands.
+- **Structural** (add/reorganize sections, modify styles, manipulate tables, insert images): write C# directly. Read `references/openxml_element_order.md` and the relevant `Samples/*.cs`.
+
+Available CLI edit subcommands:
+- `replace-text --find "X" --replace "Y"`
+- `fill-placeholders --data '{"key":"value"}'`
+- `fill-table --data table.json`
+- `insert-section`, `remove-section`, `update-header-footer`
 
 ```bash
-python scripts/office/soffice.py --headless --convert-to docx document.doc
+$CLI edit replace-text --input in.docx --output out.docx --find "OLD" --replace "NEW"
+$CLI edit fill-placeholders --input in.docx --output out.docx --data '{"name":"John"}'
 ```
 
-### Reading Content
+Then run the **validation pipeline**. Also run diff to verify minimal changes:
+```bash
+$CLI diff --before in.docx --after out.docx
+```
+
+## Scenario C: Apply Template
+
+Read `references/scenario_c_apply_template.md` first. Preview and analyze both source and template.
 
 ```bash
-# Text extraction with tracked changes
-pandoc --track-changes=all document.docx -o output.md
-
-# Raw XML access
-python scripts/office/unpack.py document.docx unpacked/
+$CLI apply-template --input source.docx --template template.docx --output out.docx
 ```
 
-### Converting to Images
+For complex template operations (multi-template merge, per-section headers/footers, style merging), write C# directly — see Critical Rules below for required patterns.
+
+Run the **validation pipeline**, then the **hard gate-check**:
+```bash
+$CLI validate --input out.docx --gate-check assets/xsd/business-rules.xsd
+```
+Gate-check is a **hard requirement**. Do NOT deliver until it passes. If it fails: diagnose, fix, re-run.
+
+Also diff to verify content preservation: `$CLI diff --before source.docx --after out.docx`
+
+## Validation pipeline
+
+Run after every write operation. For Scenario C the full pipeline is **mandatory**; for A/B it is **recommended** (skip only if the operation was trivially simple).
 
 ```bash
-python scripts/office/soffice.py --headless --convert-to pdf document.docx
-pdftoppm -jpeg -r 150 document.pdf page
+$CLI merge-runs --input doc.docx                                    # 1. consolidate runs
+$CLI validate --input doc.docx --xsd assets/xsd/wml-subset.xsd     # 2. XSD structure
+$CLI validate --input doc.docx --business                           # 3. business rules
 ```
 
-### Accepting Tracked Changes
-
-To produce a clean document with all tracked changes accepted (requires LibreOffice):
-
+If XSD fails, auto-repair and retry:
 ```bash
-python scripts/accept_changes.py input.docx output.docx
+$CLI fix-order --input doc.docx
+$CLI validate --input doc.docx --xsd assets/xsd/wml-subset.xsd
 ```
 
----
-
-## Creating New Documents
-
-Generate .docx files with JavaScript, then validate. Install: `npm install -g docx`
-
-### Setup
-```javascript
-const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, ImageRun,
-        Header, Footer, AlignmentType, PageOrientation, LevelFormat, ExternalHyperlink,
-        TableOfContents, HeadingLevel, BorderStyle, WidthType, ShadingType,
-        VerticalAlign, PageNumber, PageBreak } = require('docx');
-
-const doc = new Document({ sections: [{ children: [/* content */] }] });
-Packer.toBuffer(doc).then(buffer => fs.writeFileSync("doc.docx", buffer));
-```
-
-### Validation
-After creating the file, validate it. If validation fails, unpack, fix the XML, and repack.
+If XSD still fails, fall back to business rules + preview:
 ```bash
-python scripts/office/validate.py doc.docx
+$CLI validate --input doc.docx --business
+scripts/docx_preview.sh doc.docx
+# Verify: font contamination=0, table count correct, drawing count correct, sectPr count correct
 ```
 
-### Page Size
-
-```javascript
-// CRITICAL: docx-js defaults to A4, not US Letter
-// Always set page size explicitly for consistent results
-sections: [{
-  properties: {
-    page: {
-      size: {
-        width: 12240,   // 8.5 inches in DXA
-        height: 15840   // 11 inches in DXA
-      },
-      margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } // 1 inch margins
-    }
-  },
-  children: [/* content */]
-}]
-```
-
-**Common page sizes (DXA units, 1440 DXA = 1 inch):**
-
-| Paper | Width | Height | Content Width (1" margins) |
-|-------|-------|--------|---------------------------|
-| US Letter | 12,240 | 15,840 | 9,360 |
-| A4 (default) | 11,906 | 16,838 | 9,026 |
-
-**Landscape orientation:** docx-js swaps width/height internally, so pass portrait dimensions and let it handle the swap:
-```javascript
-size: {
-  width: 12240,   // Pass SHORT edge as width
-  height: 15840,  // Pass LONG edge as height
-  orientation: PageOrientation.LANDSCAPE  // docx-js swaps them in the XML
-},
-// Content width = 15840 - left margin - right margin (uses the long edge)
-```
-
-### Styles (Override Built-in Headings)
-
-Use Arial as the default font (universally supported). Keep titles black for readability.
-
-```javascript
-const doc = new Document({
-  styles: {
-    default: { document: { run: { font: "Arial", size: 24 } } }, // 12pt default
-    paragraphStyles: [
-      // IMPORTANT: Use exact IDs to override built-in styles
-      { id: "Heading1", name: "Heading 1", basedOn: "Normal", next: "Normal", quickFormat: true,
-        run: { size: 32, bold: true, font: "Arial" },
-        paragraph: { spacing: { before: 240, after: 240 }, outlineLevel: 0 } }, // outlineLevel required for TOC
-      { id: "Heading2", name: "Heading 2", basedOn: "Normal", next: "Normal", quickFormat: true,
-        run: { size: 28, bold: true, font: "Arial" },
-        paragraph: { spacing: { before: 180, after: 180 }, outlineLevel: 1 } },
-    ]
-  },
-  sections: [{
-    children: [
-      new Paragraph({ heading: HeadingLevel.HEADING_1, children: [new TextRun("Title")] }),
-    ]
-  }]
-});
-```
-
-### Lists (NEVER use unicode bullets)
-
-```javascript
-// ❌ WRONG - never manually insert bullet characters
-new Paragraph({ children: [new TextRun("• Item")] })  // BAD
-new Paragraph({ children: [new TextRun("\u2022 Item")] })  // BAD
-
-// ✅ CORRECT - use numbering config with LevelFormat.BULLET
-const doc = new Document({
-  numbering: {
-    config: [
-      { reference: "bullets",
-        levels: [{ level: 0, format: LevelFormat.BULLET, text: "•", alignment: AlignmentType.LEFT,
-          style: { paragraph: { indent: { left: 720, hanging: 360 } } } }] },
-      { reference: "numbers",
-        levels: [{ level: 0, format: LevelFormat.DECIMAL, text: "%1.", alignment: AlignmentType.LEFT,
-          style: { paragraph: { indent: { left: 720, hanging: 360 } } } }] },
-    ]
-  },
-  sections: [{
-    children: [
-      new Paragraph({ numbering: { reference: "bullets", level: 0 },
-        children: [new TextRun("Bullet item")] }),
-      new Paragraph({ numbering: { reference: "numbers", level: 0 },
-        children: [new TextRun("Numbered item")] }),
-    ]
-  }]
-});
-
-// ⚠️ Each reference creates INDEPENDENT numbering
-// Same reference = continues (1,2,3 then 4,5,6)
-// Different reference = restarts (1,2,3 then 1,2,3)
-```
-
-### Tables
-
-**CRITICAL: Tables need dual widths** - set both `columnWidths` on the table AND `width` on each cell. Without both, tables render incorrectly on some platforms.
-
-```javascript
-// CRITICAL: Always set table width for consistent rendering
-// CRITICAL: Use ShadingType.CLEAR (not SOLID) to prevent black backgrounds
-const border = { style: BorderStyle.SINGLE, size: 1, color: "CCCCCC" };
-const borders = { top: border, bottom: border, left: border, right: border };
-
-new Table({
-  width: { size: 9360, type: WidthType.DXA }, // Always use DXA (percentages break in Google Docs)
-  columnWidths: [4680, 4680], // Must sum to table width (DXA: 1440 = 1 inch)
-  rows: [
-    new TableRow({
-      children: [
-        new TableCell({
-          borders,
-          width: { size: 4680, type: WidthType.DXA }, // Also set on each cell
-          shading: { fill: "D5E8F0", type: ShadingType.CLEAR }, // CLEAR not SOLID
-          margins: { top: 80, bottom: 80, left: 120, right: 120 }, // Cell padding (internal, not added to width)
-          children: [new Paragraph({ children: [new TextRun("Cell")] })]
-        })
-      ]
-    })
-  ]
-})
-```
-
-**Table width calculation:**
-
-Always use `WidthType.DXA` — `WidthType.PERCENTAGE` breaks in Google Docs.
-
-```javascript
-// Table width = sum of columnWidths = content width
-// US Letter with 1" margins: 12240 - 2880 = 9360 DXA
-width: { size: 9360, type: WidthType.DXA },
-columnWidths: [7000, 2360]  // Must sum to table width
-```
-
-**Width rules:**
-- **Always use `WidthType.DXA`** — never `WidthType.PERCENTAGE` (incompatible with Google Docs)
-- Table width must equal the sum of `columnWidths`
-- Cell `width` must match corresponding `columnWidth`
-- Cell `margins` are internal padding - they reduce content area, not add to cell width
-- For full-width tables: use content width (page width minus left and right margins)
-
-### Images
-
-```javascript
-// CRITICAL: type parameter is REQUIRED
-new Paragraph({
-  children: [new ImageRun({
-    type: "png", // Required: png, jpg, jpeg, gif, bmp, svg
-    data: fs.readFileSync("image.png"),
-    transformation: { width: 200, height: 150 },
-    altText: { title: "Title", description: "Desc", name: "Name" } // All three required
-  })]
-})
-```
-
-### Page Breaks
-
-```javascript
-// CRITICAL: PageBreak must be inside a Paragraph
-new Paragraph({ children: [new PageBreak()] })
-
-// Or use pageBreakBefore
-new Paragraph({ pageBreakBefore: true, children: [new TextRun("New page")] })
-```
-
-### Table of Contents
-
-```javascript
-// CRITICAL: Headings must use HeadingLevel ONLY - no custom styles
-new TableOfContents("Table of Contents", { hyperlink: true, headingStyleRange: "1-3" })
-```
-
-### Headers/Footers
-
-```javascript
-sections: [{
-  properties: {
-    page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } // 1440 = 1 inch
-  },
-  headers: {
-    default: new Header({ children: [new Paragraph({ children: [new TextRun("Header")] })] })
-  },
-  footers: {
-    default: new Footer({ children: [new Paragraph({
-      children: [new TextRun("Page "), new TextRun({ children: [PageNumber.CURRENT] })]
-    })] })
-  },
-  children: [/* content */]
-}]
-```
-
-### Critical Rules for docx-js
-
-- **Set page size explicitly** - docx-js defaults to A4; use US Letter (12240 x 15840 DXA) for US documents
-- **Landscape: pass portrait dimensions** - docx-js swaps width/height internally; pass short edge as `width`, long edge as `height`, and set `orientation: PageOrientation.LANDSCAPE`
-- **Never use `\n`** - use separate Paragraph elements
-- **Never use unicode bullets** - use `LevelFormat.BULLET` with numbering config
-- **PageBreak must be in Paragraph** - standalone creates invalid XML
-- **ImageRun requires `type`** - always specify png/jpg/etc
-- **Always set table `width` with DXA** - never use `WidthType.PERCENTAGE` (breaks in Google Docs)
-- **Tables need dual widths** - `columnWidths` array AND cell `width`, both must match
-- **Table width = sum of columnWidths** - for DXA, ensure they add up exactly
-- **Always add cell margins** - use `margins: { top: 80, bottom: 80, left: 120, right: 120 }` for readable padding
-- **Use `ShadingType.CLEAR`** - never SOLID for table shading
-- **TOC requires HeadingLevel only** - no custom styles on heading paragraphs
-- **Override built-in styles** - use exact IDs: "Heading1", "Heading2", etc.
-- **Include `outlineLevel`** - required for TOC (0 for H1, 1 for H2, etc.)
-
----
-
-## Editing Existing Documents
-
-**Follow all 3 steps in order.**
-
-### Step 1: Unpack
-```bash
-python scripts/office/unpack.py document.docx unpacked/
-```
-Extracts XML, pretty-prints, merges adjacent runs, and converts smart quotes to XML entities (`&#x201C;` etc.) so they survive editing. Use `--merge-runs false` to skip run merging.
-
-### Step 2: Edit XML
-
-Edit files in `unpacked/word/`. See XML Reference below for patterns.
-
-**Use "Claude" as the author** for tracked changes and comments, unless the user explicitly requests use of a different name.
-
-**Use the Edit tool directly for string replacement. Do not write Python scripts.** Scripts introduce unnecessary complexity. The Edit tool shows exactly what is being replaced.
-
-**CRITICAL: Use smart quotes for new content.** When adding text with apostrophes or quotes, use XML entities to produce smart quotes:
-```xml
-<!-- Use these entities for professional typography -->
-<w:t>Here&#x2019;s a quote: &#x201C;Hello&#x201D;</w:t>
-```
-| Entity | Character |
-|--------|-----------|
-| `&#x2018;` | ‘ (left single) |
-| `&#x2019;` | ’ (right single / apostrophe) |
-| `&#x201C;` | “ (left double) |
-| `&#x201D;` | ” (right double) |
-
-**Adding comments:** Use `comment.py` to handle boilerplate across multiple XML files (text must be pre-escaped XML):
-```bash
-python scripts/comment.py unpacked/ 0 "Comment text with &amp; and &#x2019;"
-python scripts/comment.py unpacked/ 1 "Reply text" --parent 0  # reply to comment 0
-python scripts/comment.py unpacked/ 0 "Text" --author "Custom Author"  # custom author name
-```
-Then add markers to document.xml (see Comments in XML Reference).
-
-### Step 3: Pack
-```bash
-python scripts/office/pack.py unpacked/ output.docx --original document.docx
-```
-Validates with auto-repair, condenses XML, and creates DOCX. Use `--validate false` to skip.
-
-**Auto-repair will fix:**
-- `durableId` >= 0x7FFFFFFF (regenerates valid ID)
-- Missing `xml:space="preserve"` on `<w:t>` with whitespace
-
-**Auto-repair won't fix:**
-- Malformed XML, invalid element nesting, missing relationships, schema violations
-
-### Common Pitfalls
-
-- **Replace entire `<w:r>` elements**: When adding tracked changes, replace the whole `<w:r>...</w:r>` block with `<w:del>...<w:ins>...` as siblings. Don't inject tracked change tags inside a run.
-- **Preserve `<w:rPr>` formatting**: Copy the original run's `<w:rPr>` block into your tracked change runs to maintain bold, font size, etc.
-
----
-
-## XML Reference
-
-### Schema Compliance
-
-- **Element order in `<w:pPr>`**: `<w:pStyle>`, `<w:numPr>`, `<w:spacing>`, `<w:ind>`, `<w:jc>`, `<w:rPr>` last
-- **Whitespace**: Add `xml:space="preserve"` to `<w:t>` with leading/trailing spaces
-- **RSIDs**: Must be 8-digit hex (e.g., `00AB1234`)
-
-### Tracked Changes
-
-**Insertion:**
-```xml
-<w:ins w:id="1" w:author="Claude" w:date="2025-01-01T00:00:00Z">
-  <w:r><w:t>inserted text</w:t></w:r>
-</w:ins>
-```
-
-**Deletion:**
-```xml
-<w:del w:id="2" w:author="Claude" w:date="2025-01-01T00:00:00Z">
-  <w:r><w:delText>deleted text</w:delText></w:r>
-</w:del>
-```
-
-**Inside `<w:del>`**: Use `<w:delText>` instead of `<w:t>`, and `<w:delInstrText>` instead of `<w:instrText>`.
-
-**Minimal edits** - only mark what changes:
-```xml
-<!-- Change "30 days" to "60 days" -->
-<w:r><w:t>The term is </w:t></w:r>
-<w:del w:id="1" w:author="Claude" w:date="...">
-  <w:r><w:delText>30</w:delText></w:r>
-</w:del>
-<w:ins w:id="2" w:author="Claude" w:date="...">
-  <w:r><w:t>60</w:t></w:r>
-</w:ins>
-<w:r><w:t> days.</w:t></w:r>
-```
-
-**Deleting entire paragraphs/list items** - when removing ALL content from a paragraph, also mark the paragraph mark as deleted so it merges with the next paragraph. Add `<w:del/>` inside `<w:pPr><w:rPr>`:
-```xml
-<w:p>
-  <w:pPr>
-    <w:numPr>...</w:numPr>  <!-- list numbering if present -->
-    <w:rPr>
-      <w:del w:id="1" w:author="Claude" w:date="2025-01-01T00:00:00Z"/>
-    </w:rPr>
-  </w:pPr>
-  <w:del w:id="2" w:author="Claude" w:date="2025-01-01T00:00:00Z">
-    <w:r><w:delText>Entire paragraph content being deleted...</w:delText></w:r>
-  </w:del>
-</w:p>
-```
-Without the `<w:del/>` in `<w:pPr><w:rPr>`, accepting changes leaves an empty paragraph/list item.
-
-**Rejecting another author's insertion** - nest deletion inside their insertion:
-```xml
-<w:ins w:author="Jane" w:id="5">
-  <w:del w:author="Claude" w:id="10">
-    <w:r><w:delText>their inserted text</w:delText></w:r>
-  </w:del>
-</w:ins>
-```
-
-**Restoring another author's deletion** - add insertion after (don't modify their deletion):
-```xml
-<w:del w:author="Jane" w:id="5">
-  <w:r><w:delText>deleted text</w:delText></w:r>
-</w:del>
-<w:ins w:author="Claude" w:id="10">
-  <w:r><w:t>deleted text</w:t></w:r>
-</w:ins>
-```
-
-### Comments
-
-After running `comment.py` (see Step 2), add markers to document.xml. For replies, use `--parent` flag and nest markers inside the parent's.
-
-**CRITICAL: `<w:commentRangeStart>` and `<w:commentRangeEnd>` are siblings of `<w:r>`, never inside `<w:r>`.**
-
-```xml
-<!-- Comment markers are direct children of w:p, never inside w:r -->
-<w:commentRangeStart w:id="0"/>
-<w:del w:id="1" w:author="Claude" w:date="2025-01-01T00:00:00Z">
-  <w:r><w:delText>deleted</w:delText></w:r>
-</w:del>
-<w:r><w:t> more text</w:t></w:r>
-<w:commentRangeEnd w:id="0"/>
-<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="0"/></w:r>
-
-<!-- Comment 0 with reply 1 nested inside -->
-<w:commentRangeStart w:id="0"/>
-  <w:commentRangeStart w:id="1"/>
-  <w:r><w:t>text</w:t></w:r>
-  <w:commentRangeEnd w:id="1"/>
-<w:commentRangeEnd w:id="0"/>
-<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="0"/></w:r>
-<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr><w:commentReference w:id="1"/></w:r>
-```
-
-### Images
-
-1. Add image file to `word/media/`
-2. Add relationship to `word/_rels/document.xml.rels`:
-```xml
-<Relationship Id="rId5" Type=".../image" Target="media/image1.png"/>
-```
-3. Add content type to `[Content_Types].xml`:
-```xml
-<Default Extension="png" ContentType="image/png"/>
-```
-4. Reference in document.xml:
-```xml
-<w:drawing>
-  <wp:inline>
-    <wp:extent cx="914400" cy="914400"/>  <!-- EMUs: 914400 = 1 inch -->
-    <a:graphic>
-      <a:graphicData uri=".../picture">
-        <pic:pic>
-          <pic:blipFill><a:blip r:embed="rId5"/></pic:blipFill>
-        </pic:pic>
-      </a:graphicData>
-    </a:graphic>
-  </wp:inline>
-</w:drawing>
-```
+Final preview: `scripts/docx_preview.sh doc.docx`
+
+## Critical rules
+
+These prevent file corruption — OpenXML is strict about element ordering.
+
+**Element order** (properties always first):
+
+| Parent | Order |
+|--------|-------|
+| `w:p`  | `pPr` → runs |
+| `w:r`  | `rPr` → `t`/`br`/`tab` |
+| `w:tbl`| `tblPr` → `tblGrid` → `tr` |
+| `w:tr` | `trPr` → `tc` |
+| `w:tc` | `tcPr` → `p` (min 1 `<w:p/>`) |
+| `w:body` | block content → `sectPr` (LAST child) |
+
+**Direct format contamination:** When copying content from a source document, inline `rPr` (fonts, color) and `pPr` (borders, shading, spacing) override template styles. Always strip direct formatting — keep only `pStyle` reference and `t` text. Clean tables too (including `pPr/rPr` inside cells).
+
+**Track changes:** `<w:del>` uses `<w:delText>`, never `<w:t>`. `<w:ins>` uses `<w:t>`, never `<w:delText>`.
+
+**Font size:** `w:sz` = points × 2 (12pt → `sz="24"`). Margins/spacing in DXA (1 inch = 1440, 1cm ≈ 567).
+
+**Heading styles MUST have OutlineLevel:** When defining heading styles (Heading1, ThesisH1, etc.), always include `new OutlineLevel { Val = N }` in `StyleParagraphProperties` (H1→0, H2→1, H3→2). Without this, Word sees them as plain styled text — TOC and navigation pane won't work.
+
+**Multi-template merge:** When given multiple template files (font, heading, breaks), read `references/scenario_c_apply_template.md` section "Multi-Template Merge" FIRST. Key rules:
+- Merge styles from all templates into one styles.xml. Structure (sections/breaks) comes from the breaks template.
+- Each content paragraph must appear exactly ONCE — never duplicate when inserting section breaks.
+- NEVER insert empty/blank paragraphs as padding or section separators. Output paragraph count must equal input. Use section break properties (`w:sectPr` inside `w:pPr`) and style spacing (`w:spacing` before/after) for visual separation.
+- Insert oddPage section breaks before EVERY chapter heading, not just the first. Even if a chapter has dual-column content, it MUST start with oddPage; use a second continuous break after the heading for column switching.
+- Dual-column chapters need THREE section breaks: (1) oddPage in preceding para's pPr, (2) continuous+cols=2 in the chapter HEADING's pPr, (3) continuous+cols=1 in the last body para's pPr to revert.
+- Copy `titlePg` settings from the breaks template for EACH section. Abstract and TOC sections typically need `titlePg=true`.
+
+**Multi-section headers/footers:** Templates with 10+ sections (e.g., Chinese thesis) have DIFFERENT headers/footers per section (Roman vs Arabic page numbers, different header text per zone). Rules:
+- Use C-2 Base-Replace: copy the TEMPLATE as output base, then replace body content. This preserves all sections, headers, footers, and titlePg settings automatically.
+- NEVER recreate headers/footers from scratch — copy template header/footer XML byte-for-byte.
+- NEVER add formatting (borders, alignment, font size) not present in the template header XML.
+- Non-cover sections MUST have header/footer XML files (at least empty header + page number footer).
+- See `references/scenario_c_apply_template.md` section "Multi-Section Header/Footer Transfer".
+
+## References
+
+Load as needed — don't load all at once. Pick the most relevant files for the task.
+
+**The C# samples and design references below are the project's knowledge base ("encyclopedia").** When writing OpenXML code, ALWAYS read the relevant sample file first — it contains compilable, SDK-version-verified patterns that prevent common errors. When making aesthetic decisions, read the design principles and recipe files — they encode tested, harmonious parameter sets from authoritative sources (IEEE, ACM, APA, Nature, etc.), not guesses.
+
+### Scenario guides (read first for each pipeline)
+
+| File | When |
+|------|------|
+| `references/scenario_a_create.md` | Pipeline A: creating from scratch |
+| `references/scenario_b_edit_content.md` | Pipeline B: editing existing content |
+| `references/scenario_c_apply_template.md` | Pipeline C: applying template formatting |
+
+### C# code samples (compilable, heavily commented — read when writing code)
+
+| File | Topic |
+|------|-------|
+| `Samples/DocumentCreationSamples.cs` | Document lifecycle: create, open, save, streams, doc defaults, settings, properties, page setup, multi-section |
+| `Samples/StyleSystemSamples.cs` | Styles: Normal/Heading chain, character/table/list styles, DocDefaults, latentStyles, CJK 公文, APA 7th, import, resolve inheritance |
+| `Samples/CharacterFormattingSamples.cs` | RunProperties: fonts, size, bold/italic, all underlines, color, highlight, strike, sub/super, caps, spacing, shading, border, emphasis marks |
+| `Samples/ParagraphFormattingSamples.cs` | ParagraphProperties: justification, indentation, line/paragraph spacing, keep/widow, outline level, borders, tabs, numbering, bidi, frame |
+| `Samples/TableSamples.cs` | Tables: borders, grid, cell props, margins, row height, header repeat, merge (H+V), nested, floating, three-line 三线表, zebra striping |
+| `Samples/HeaderFooterSamples.cs` | Headers/footers: page numbers, "Page X of Y", first/even/odd, logo image, table layout, 公文 "-X-", per-section |
+| `Samples/ImageSamples.cs` | Images: inline, floating, text wrapping, border, alt text, in header/table, replace, SVG fallback, dimension calc |
+| `Samples/ListAndNumberingSamples.cs` | Numbering: bullets, multi-level decimal, custom symbols, outline→headings, legal, Chinese 一/（一）/1./(1), restart/continue |
+| `Samples/FieldAndTocSamples.cs` | Fields: TOC, SimpleField vs complex field, DATE/PAGE/REF/SEQ/MERGEFIELD/IF/STYLEREF, TOC styles |
+| `Samples/FootnoteAndCommentSamples.cs` | Footnotes, endnotes, comments (4-file system), bookmarks, hyperlinks (internal + external) |
+| `Samples/TrackChangesSamples.cs` | Revisions: insertions (w:t), deletions (w:delText!), formatting changes, accept/reject all, move tracking |
+| `Samples/AestheticRecipeSamples.cs` | 13 aesthetic recipes from authoritative sources: ModernCorporate, AcademicThesis, ExecutiveBrief, ChineseGovernment (GB/T 9704), MinimalModern, IEEE Conference, ACM sigconf, APA 7th, MLA 9th, Chicago/Turabian, Springer LNCS, Nature, HBR — each with exact values from official style guides |
+
+Note: `Samples/` path is relative to `scripts/dotnet/MiniMaxAIDocx.Core/`.
+
+### Markdown references (read when you need specifications or design rules)
+
+| File | When |
+|------|------|
+| `references/openxml_element_order.md` | XML element ordering rules (prevents corruption) |
+| `references/openxml_units.md` | Unit conversion: DXA, EMU, half-points, eighth-points |
+| `references/openxml_encyclopedia_part1.md` | Detailed C# encyclopedia: document creation, styles, character & paragraph formatting |
+| `references/openxml_encyclopedia_part2.md` | Detailed C# encyclopedia: page setup, tables, headers/footers, sections, doc properties |
+| `references/openxml_encyclopedia_part3.md` | Detailed C# encyclopedia: TOC, footnotes, fields, track changes, comments, images, math, numbering, protection |
+| `references/typography_guide.md` | Font pairing, sizes, spacing, page layout, table design, color schemes |
+| `references/cjk_typography.md` | CJK fonts, 字号 sizes, RunFonts mapping, GB/T 9704 公文 standard |
+| `references/cjk_university_template_guide.md` | Chinese university thesis templates: numeric styleIds (1/2/3 vs Heading1), document zone structure (cover→abstract→TOC→body→references), font expectations, common mistakes |
+| `references/design_principles.md` | **Aesthetic foundations**: 6 design principles (white space, contrast/scale, proximity, alignment, repetition, hierarchy) — teaches WHY, not just WHAT |
+| `references/design_good_bad_examples.md` | **Good vs Bad comparisons**: 10 categories of typography mistakes with OpenXML values, ASCII mockups, and fixes |
+| `references/track_changes_guide.md` | Revision marks deep dive |
+| `references/troubleshooting.md` | **Symptom-driven fixes**: 13 common problems indexed by what you SEE (headings wrong, images missing, TOC broken, etc.) — search by symptom, find the fix |

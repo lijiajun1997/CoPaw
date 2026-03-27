@@ -738,7 +738,9 @@ class ToolGuardMixin:
         logger.info(
             "Injected user input for session %s: %s",
             session_id[:16],
-            item.content[:50] + "..." if len(item.content) > 50 else item.content,
+            item.content[:50] + "..."
+            if len(item.content) > 50
+            else item.content,
         )
 
     # ------------------------------------------------------------------

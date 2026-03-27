@@ -22,29 +22,24 @@ def format_user_interrupt(
     Returns:
         Formatted Msg object for injection into agent memory
     """
-    hint = (
-        "📌 **用户补充信息 / User Additional Input**\n\n"
-        f"{content}\n\n"
-    )
+    hint = "📌 **用户补充信息 / User Additional Input**\n\n" f"{content}\n\n"
 
     if pending_count > 0:
         hint += f"_（还有 {pending_count} 条待处理消息）_\n\n"
 
     hint += (
-        "请结合此信息判断是否需要：\n"
-        "1. 调整当前计划\n"
-        "2. 回应用户的问题\n"
-        "3. 继续原定任务\n\n"
-        "---"
+        "请结合此信息判断是否需要：\n" "1. 调整当前计划\n" "2. 回应用户的问题\n" "3. 继续原定任务\n\n" "---"
     )
 
     return Msg(
         name="system",
         role="system",
-        content=[{
-            "type": "text",
-            "text": hint,
-        }],
+        content=[
+            {
+                "type": "text",
+                "text": hint,
+            },
+        ],
     )
 
 
@@ -58,11 +53,7 @@ def format_user_interrupt_ack(content: str) -> str:
         Acknowledgment message text
     """
     preview = content[:50] + "..." if len(content) > 50 else content
-    return (
-        f"✅ **已收到补充信息**\n\n"
-        f"> {preview}\n\n"
-        f"将在当前操作完成后处理..."
-    )
+    return f"✅ **已收到补充信息**\n\n" f"> {preview}\n\n" f"将在当前操作完成后处理..."
 
 
 def format_user_interrupt_batch_ack(count: int) -> str:
@@ -74,7 +65,4 @@ def format_user_interrupt_batch_ack(count: int) -> str:
     Returns:
         Acknowledgment message text
     """
-    return (
-        f"✅ **已收到 {count} 条补充信息**\n\n"
-        f"将在当前操作完成后依次处理..."
-    )
+    return f"✅ **已收到 {count} 条补充信息**\n\n" f"将在当前操作完成后依次处理..."
