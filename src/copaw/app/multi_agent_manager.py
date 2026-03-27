@@ -377,14 +377,14 @@ class MultiAgentManager:
                         workspace_dir=Path(shared_ref.workspace_dir),
                     )
                     logger.debug(
-                        "Lazy init SharedWorkspaceManager for user_files_dir"
+                        "Lazy init SharedWorkspaceManager for user_files_dir",
                     )
                     return self._shared_workspace_manager.get_user_files_dir(
-                        user_id
+                        user_id,
                     )
         except Exception as e:
             logger.warning(
-                "Failed to init SharedWorkspaceManager: %s", e
+                "Failed to init SharedWorkspaceManager: %s", e,
             )
 
         return None
