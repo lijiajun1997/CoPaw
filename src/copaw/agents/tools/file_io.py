@@ -13,6 +13,7 @@ from ...config.context import get_current_workspace_dir
 from .utils import (
     truncate_text_output,
     read_file_safe,
+    check_workspace_restriction,
 )
 
 
