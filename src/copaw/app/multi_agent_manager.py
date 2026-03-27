@@ -361,6 +361,32 @@ class MultiAgentManager:
         """
         if self._shared_workspace_manager:
             return self._shared_workspace_manager.get_user_files_dir(user_id)
+
+        # Try to initialize synchronously if shared agent profile exists
+        from ..config.utils import load_config
+
+        try:
+            config = load_config()
+            # Initialize shared workspace if:
+            # 1. In SHARED_AGENT mode, OR
+            # 2. A 'shared' agent profile exists (for multi-agent with shared)
+            shared_ref = config.agents.profiles.get("shared")
+            if config.multi_user_mode == MultiUserMode.SHARED_AGENT or shared_ref:
+                if shared_ref:
+                    self._shared_workspace_manager = SharedWorkspaceManager(
+                        workspace_dir=Path(shared_ref.workspace_dir),
+                    )
+                    logger.debug(
+                        "Lazy init SharedWorkspaceManager for user_files_dir"
+                    )
+                    return self._shared_workspace_manager.get_user_files_dir(
+                        user_id
+                    )
+        except Exception as e:
+            logger.warning(
+                "Failed to init SharedWorkspaceManager: %s", e
+            )
+
         return None
 
     def get_user_tasks_dir(self, user_id: str) -> Optional[Path]:

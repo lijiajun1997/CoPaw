@@ -1091,6 +1091,7 @@ class FeishuChannel(BaseChannel):
             Path to the directory where files should be saved.
         """
         if not user_id:
+            logger.debug("No user_id provided, using global media dir")
             return self._media_dir
 
         # Try to get user files dir from SharedWorkspaceManager
@@ -1101,9 +1102,27 @@ class FeishuChannel(BaseChannel):
             user_files_dir = manager.get_user_files_dir(user_id)
             if user_files_dir:
                 user_files_dir.mkdir(parents=True, exist_ok=True)
+                logger.debug(
+                    "Using user files dir: %s for user_id: %s",
+                    user_files_dir,
+                    user_id,
+                )
                 return user_files_dir
+            else:
+                logger.debug(
+                    "get_user_files_dir returned None for user_id: %s, "
+                    "shared workspace may not be initialized",
+                    user_id,
+                )
+        else:
+            logger.debug("MultiAgentManager not available")
 
         # Fallback to global media dir
+        logger.debug(
+            "Falling back to global media dir: %s for user_id: %s",
+            self._media_dir,
+            user_id,
+        )
         return self._media_dir
 
     async def _download_image_resource(
