@@ -34,7 +34,7 @@ from ...constant import (
 from ...security.tool_guard.approval import ApprovalDecision
 
 if TYPE_CHECKING:
-    from ...agents.memory import MemoryManager
+    from ...agents.memory import BaseMemoryManager, MemoryManager
     from ..multi_agent_manager import MultiAgentManager
 
 logger = logging.getLogger(__name__)
@@ -73,7 +73,7 @@ class AgentRunner(Runner):
         )
         self._chat_manager = None  # Store chat_manager reference
         self._mcp_manager = None  # MCP client manager for hot-reload
-        self.memory_manager: MemoryManager | None = None
+        self.memory_manager: BaseMemoryManager | None = None
         # Session task tracking for /stop command
         self._session_tasks: dict[str, asyncio.Task] = {}
 

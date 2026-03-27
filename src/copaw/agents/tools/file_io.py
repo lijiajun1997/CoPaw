@@ -8,12 +8,11 @@ from typing import Optional
 from agentscope.message import TextBlock
 from agentscope.tool import ToolResponse
 
-from ...constant import WORKING_DIR
+from ...constant import WORKING_DIR, TRUNCATION_NOTICE_MARKER
 from ...config.context import get_current_workspace_dir
 from .utils import (
-    truncate_file_output,
+    truncate_text_output,
     read_file_safe,
-    check_workspace_restriction,
 )
 
 
@@ -171,20 +170,25 @@ async def read_file(  # pylint: disable=too-many-return-statements
         selected_content = "\n".join(all_lines[s - 1 : e])
 
         # Apply smart truncation (consistent with shell output format)
-        text = truncate_file_output(
+        text = truncate_text_output(
             selected_content,
             start_line=s,
             total_lines=total,
+            file_path=file_path,
         )
 
-        # Add continuation hint if partial read without truncation
+        # Add continuation hint if partial read without truncation.
+        # Use TRUNCATION_NOTICE_MARKER format so ToolResultCompactor can
+        # re-truncate with the correct start_line when compacting old messages.
         if text == selected_content and e < total:
-            remaining = total - e
-            text = (
-                f"{file_path}  (lines {s}-{e} of {total})\n"
-                f"{text}\n\n[{remaining} more lines. "
-                f"Use start_line={e + 1} to continue.]"
+            content_bytes = len(text.encode("utf-8"))
+            notice = (
+                TRUNCATION_NOTICE_MARKER
+                + f"\nFile: {file_path}\nStarting at start_line={s}, next {content_bytes} bytes."
+                f"\nTotal lines: {total}"
+                f"\nUse start_line={e + 1} to continue."
             )
+            text = text + notice
 
         return ToolResponse(
             content=[TextBlock(type="text", text=text)],
